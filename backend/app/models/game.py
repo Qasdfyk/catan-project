@@ -1,10 +1,27 @@
+# ============================================================
+# FILE: app/models/game.py
+# ============================================================
 from typing import List, Optional, Dict
 import random
 from dataclasses import dataclass, field
+from enum import Enum
 
-from app.models.board import Board, ResourceType
+from app.models.board import Board, ResourceType, Tile
 from app.models.player import Player, PlayerColor
 from app.models.hex_lib import Edge, Vertex, Hex
+
+class TurnPhase(str, Enum):
+    ROLL_DICE = "roll_dice"
+    MAIN_PHASE = "main_phase"
+
+class BuildingType(str, Enum):
+    SETTLEMENT = "settlement"
+    CITY = "city"
+
+@dataclass
+class Building:
+    owner: PlayerColor
+    type: BuildingType
 
 @dataclass
 class GameState:
@@ -15,12 +32,18 @@ class GameState:
     players: List[Player] = field(default_factory=list)
     current_turn_index: int = 0
     dice_roll: Optional[int] = None
-    is_game_over: bool = False
+    turn_phase: TurnPhase = TurnPhase.ROLL_DICE
     
-    # State of the board (buildings)
-    # We use canonical Edges/Vertices as keys
+    # Robber position (initially should be on Desert)
+    robber_hex: Optional[Hex] = None 
+
+    is_game_over: bool = False
+    winner: Optional[Player] = None
+    
+    # State of the board
     roads: Dict[Edge, PlayerColor] = field(default_factory=dict)
-    settlements: Dict[Vertex, PlayerColor] = field(default_factory=dict)
+    # Now maps Vertex -> Building object
+    settlements: Dict[Vertex, Building] = field(default_factory=dict)
 
     @staticmethod
     def create_new_game(player_names: List[str]) -> 'GameState':
@@ -34,115 +57,119 @@ class GameState:
         for i, name in enumerate(player_names):
             players.append(Player(name=name, color=colors[i]))
 
-        return GameState(board=board, players=players)
+        # Find Desert to place Robber initially
+        desert_hex = next((t.hex_coords for t in board.tiles.values() if t.resource == ResourceType.DESERT), Hex(0,0,0))
+
+        return GameState(
+            board=board, 
+            players=players,
+            robber_hex=desert_hex
+        )
 
     def get_current_player(self) -> Player:
         return self.players[self.current_turn_index]
 
     def next_turn(self):
+        self._check_victory()
+        if self.is_game_over:
+            return
+
         self.current_turn_index = (self.current_turn_index + 1) % len(self.players)
         self.dice_roll = None
+        self.turn_phase = TurnPhase.ROLL_DICE
 
     def roll_dice(self) -> int:
-        """
-        Rolls dice and triggers resource distribution.
-        """
+        if self.turn_phase != TurnPhase.ROLL_DICE:
+            raise ValueError("Cannot roll dice in MAIN_PHASE.")
+
         d1 = random.randint(1, 6)
         d2 = random.randint(1, 6)
         self.dice_roll = d1 + d2
         
-        # Trigger harvest logic immediately after roll
-        self.distribute_resources(self.dice_roll)
+        self.turn_phase = TurnPhase.MAIN_PHASE
+
+        if self.dice_roll == 7:
+            # Phase 1: Just wait for move_robber
+            pass
+        else:
+            self.distribute_resources(self.dice_roll)
         
         return self.dice_roll
 
     def distribute_resources(self, roll_number: int):
-        """
-        Gives resources to players based on the dice roll.
-        """
-        if roll_number == 7:
-            # TODO: Implement Robber logic later
-            return
-
-        # 1. Find all tiles matching the dice roll
         matching_tiles = [t for t in self.board.tiles.values() if t.number == roll_number]
 
         for tile in matching_tiles:
+            # ROBBER LOGIC
+            if tile.hex_coords == self.robber_hex:
+                continue
+            
             if tile.resource == ResourceType.DESERT:
                 continue
 
-            # 2. Check all 6 corners (vertices) of this tile
-            # We must construct vertices and get their canonical form to match the keys in self.settlements
             for direction in range(6):
-                # Create a temporary vertex object for this corner
                 raw_vertex = Vertex(tile.hex_coords, direction)
                 canonical_vertex = raw_vertex.get_canonical()
 
-                # 3. Check if anyone built here
                 if canonical_vertex in self.settlements:
-                    owner_color = self.settlements[canonical_vertex]
-                    
-                    # Find the player object
-                    # (In a real DB scenario we'd use a map, but list search is fine for 4 players)
-                    player = next((p for p in self.players if p.color == owner_color), None)
+                    building = self.settlements[canonical_vertex]
+                    player = next((p for p in self.players if p.color == building.owner), None)
                     
                     if player:
-                        # 4. Give resource
-                        # (Future: Check if it's a City to give 2)
-                        amount = 1 
+                        amount = 2 if building.type == BuildingType.CITY else 1
                         player.add_resource(tile.resource, amount)
-                        print(f"Harvest: {player.name} got {amount} {tile.resource} from roll {roll_number}")
+
+    def move_robber(self, player: Player, target_hex: Hex):
+        self._verify_turn(player)
+        if target_hex == self.robber_hex:
+             raise ValueError("Robber must be moved to a new location.")
+        if target_hex not in self.board.tiles:
+            raise ValueError("Invalid hex coordinates.")
+        
+        self.robber_hex = target_hex
 
     # --- Building Logic ---
 
     def place_road(self, player: Player, edge: Edge, free: bool = False):
-        """
-        Attempts to build a road on the given edge.
-        :param free: If True, ignores resource cost (for setup phase).
-        """
+        if not free:
+            self._verify_turn(player)
+
         canonical_edge = edge.get_canonical()
 
-        # 1. Check availability
         if canonical_edge in self.roads:
             raise ValueError("This edge is already occupied.")
 
-        # 2. Check cost (if not free)
         road_cost = {ResourceType.WOOD: 1, ResourceType.BRICK: 1}
         if not free and not player.has_resources(road_cost):
             raise ValueError("Insufficient resources for a road.")
 
-        # 3. Check connectivity
         if not self._has_road_connectivity(player, canonical_edge):
              raise ValueError("Road must be connected to your existing network.")
 
-        # Execute
         if not free:
             player.deduct_resources(road_cost)
         
         self.roads[canonical_edge] = player.color
+        self._check_longest_road(player)
 
     def place_settlement(self, player: Player, vertex: Vertex, free: bool = False):
-        """
-        Attempts to build a settlement on the given vertex.
-        """
+        if not free:
+            self._verify_turn(player)
+
         canonical_vertex = vertex.get_canonical()
 
-        # 1. Check availability
         if canonical_vertex in self.settlements:
             raise ValueError("This intersection is already occupied.")
 
-        # 2. Check Distance Rule (No neighbor settlements)
         neighbors = canonical_vertex.get_adjacent_vertices()
         for n in neighbors:
             if n in self.settlements:
                 raise ValueError("Distance Rule: Cannot build next to another settlement.")
 
-        # 3. Check connectivity
         if not free:
             if not self._has_settlement_connectivity(player, canonical_vertex):
                  raise ValueError("Settlement must be connected to your road.")
 
-        # 4. Check cost
         settlement_cost = {
             ResourceType.WOOD: 1, ResourceType.BRICK: 1,
             ResourceType.WHEAT: 1, ResourceType.SHEEP: 1
@@ -150,19 +177,62 @@ class GameState:
         if not free and not player.has_resources(settlement_cost):
             raise ValueError("Insufficient resources for a settlement.")
 
-        # Execute
         if not free:
             player.deduct_resources(settlement_cost)
         
-        self.settlements[canonical_vertex] = player.color
+        self.settlements[canonical_vertex] = Building(player.color, BuildingType.SETTLEMENT)
         player.victory_points += 1
+        self._check_victory()
 
-    # --- Helper Private Methods ---
+    def upgrade_to_city(self, player: Player, vertex: Vertex):
+        self._verify_turn(player)
+        canonical_vertex = vertex.get_canonical()
+
+        building = self.settlements.get(canonical_vertex)
+        if not building:
+            raise ValueError("No settlement at this location.")
+        if building.owner != player.color:
+            raise ValueError("You can only upgrade your own settlements.")
+        if building.type == BuildingType.CITY:
+            raise ValueError("This is already a city.")
+
+        city_cost = {ResourceType.ORE: 3, ResourceType.WHEAT: 2}
+        if not player.has_resources(city_cost):
+             raise ValueError("Insufficient resources for a city.")
+
+        player.deduct_resources(city_cost)
+        building.type = BuildingType.CITY
+        player.victory_points += 1 
+        self._check_victory()
+
+    def trade_with_bank(self, player: Player, give: ResourceType, get: ResourceType):
+        self._verify_turn(player)
+        if player.resources[give] < 4:
+            raise ValueError(f"Not enough {give} to trade. Need 4.")
+        
+        player.remove_resource(give, 4)
+        player.add_resource(get, 1)
+
+    # --- Helpers ---
+
+    def _verify_turn(self, player: Player):
+        if player != self.get_current_player():
+            raise ValueError("It is not your turn.")
+        if self.turn_phase == TurnPhase.ROLL_DICE:
+             raise ValueError("You must roll the dice first.")
+
+    def _check_victory(self):
+        p = self.get_current_player()
+        if p.victory_points >= 10:
+            self.is_game_over = True
+            self.winner = p
+
+    def _check_longest_road(self, player: Player):
+        # Placeholder for Phase 1 logic
+        # In future phases, this will run BFS/DFS to calculate road length
+        pass
 
     def _has_road_connectivity(self, player: Player, edge: Edge) -> bool:
-        """
-        Checks if a new road connects to player's existing network.
-        """
         connected_edges = edge.get_connected_edges()
         for e in connected_edges:
             if self.roads.get(e) == player.color:
@@ -170,15 +240,12 @@ class GameState:
         
         vertices = edge.get_vertices()
         for v in vertices:
-            if self.settlements.get(v) == player.color:
+            building = self.settlements.get(v)
+            if building and building.owner == player.color:
                 return True
-                
         return False
 
     def _has_settlement_connectivity(self, player: Player, vertex: Vertex) -> bool:
-        """
-        Checks if a vertex is reached by player's road.
-        """
         touching_edges = vertex.get_touching_edges()
         for e in touching_edges:
             if self.roads.get(e) == player.color:

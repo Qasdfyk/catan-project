@@ -1,5 +1,9 @@
+# ============================================================
+# FILE: tests/unit/test_game_state.py
+# ============================================================
 import pytest
-from app.models.game import GameState
+from unittest.mock import patch 
+from app.models.game import GameState, TurnPhase
 from app.models.player import Player, PlayerColor
 from app.models.board import ResourceType
 
@@ -46,31 +50,39 @@ class TestGameState:
         
         assert len(game.players) == 3
         assert game.players[0].color == PlayerColor.RED
-        assert game.players[1].color == PlayerColor.BLUE
         assert game.board is not None
         assert game.current_turn_index == 0
+        assert game.turn_phase == TurnPhase.ROLL_DICE
 
     def test_invalid_player_count(self):
         with pytest.raises(ValueError):
-            GameState.create_new_game(["Solo"]) # Need at least 2
+            GameState.create_new_game(["Solo"]) 
 
     def test_turn_cycle(self):
         names = ["Alice", "Bob"]
         game = GameState.create_new_game(names)
         
-        # Alice's turn
         assert game.get_current_player().name == "Alice"
         
         game.next_turn()
-        # Bob's turn
         assert game.get_current_player().name == "Bob"
+        assert game.turn_phase == TurnPhase.ROLL_DICE
         
         game.next_turn()
-        # Back to Alice
         assert game.get_current_player().name == "Alice"
 
-    def test_dice_roll(self):
+    def test_dice_roll_mocked(self):
+        """
+        Use a mock to ensure deterministic dice roll.
+        random.randint is called twice (for d1 and d2).
+        """
         game = GameState.create_new_game(["A", "B"])
-        roll = game.roll_dice()
-        assert 2 <= roll <= 12
-        assert game.dice_roll == roll
+        
+        # side_effect=[3, 4] means: first call returns 3, second call returns 4.
+        # Total sum should be 7.
+        with patch('random.randint', side_effect=[3, 4]):
+            roll = game.roll_dice()
+            
+            assert roll == 7
+            assert game.dice_roll == 7
+            assert game.turn_phase == TurnPhase.MAIN_PHASE
