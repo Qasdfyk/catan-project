@@ -1,0 +1,48 @@
+services:
+  # --- SERVICE 1: REDIS ---
+  redis:
+    image: redis:7-alpine
+    container_name: catan_redis
+    ports:
+      - "6379:6379" # Expose port to host for local testing/debugging
+    volumes:
+      - redis_data:/data # Persist data to a volume
+    networks:
+      - catan_net
+    # Healthcheck: Allows the backend to wait until Redis is fully ready
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # --- SERVICE 2: BACKEND ---
+  backend:
+    build:
+      context: ./backend  # Path to the directory containing Dockerfile
+      dockerfile: Dockerfile
+    container_name: catan_backend
+    ports:
+      - "8000:8000" # Map host port 8000 to container port 8000
+    environment:
+      - PROJECT_NAME=Catan Docker
+      # IMPORTANT: Using Docker DNS. 'redis' refers to the service name defined above.
+      - REDIS_URL=redis://redis:6379/0 
+    depends_on:
+      redis:
+        condition: service_healthy # Wait for Redis healthcheck to pass
+    volumes:
+      # HOT RELOAD: Mount local './backend/app' to container's '/app/app'
+      # This allows code changes to reflect immediately without rebuilding.
+      - ./backend/app:/app/app
+    networks:
+      - catan_net
+
+# Define custom bridge network
+networks:
+  catan_net:
+    driver: bridge
+
+# Define persistent storage for Redis
+volumes:
+  redis_data:

@@ -9,6 +9,7 @@ venv/
 .env
 .pytest_cache/
 backend/code_tool.py
+backend/debug_client.py
 
 # --- Node.js / Frontend ---
 node_modules/

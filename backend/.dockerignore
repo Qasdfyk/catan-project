@@ -1,0 +1,26 @@
+# Ignore local virtual environments (container creates its own)
+venv
+.venv
+env
+
+# Ignore Python cache and artifacts
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Ignore git and IDE configurations
+.git
+.gitignore
+.idea
+.vscode
+
+# Ignore documentation and tests in the production build context
+README.md
+tests/
+
+# Ignore Docker files to prevent recursive copying
+Dockerfile
+docker-compose.yml
+debug_client.py

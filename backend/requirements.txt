@@ -1,13 +1,18 @@
+# --- Core Backend ---
 fastapi>=0.109.0
-uvicorn[standard]>=0.27.0  # Serwer ASGI
-pydantic>=2.6.0           # Walidacja danych
-pydantic-settings>=2.1.0  # Zarządzanie konfiguracją (.env)
+uvicorn[standard]>=0.27.0  # Serwer aplikacji (ASGI)
+pydantic>=2.6.0            # Walidacja danych
+pydantic-settings>=2.1.0   # Obsługa .env (nowa wersja)
 
-python-socketio>=5.11.0   # Obsługa Socket.IO
+# --- Realtime (WebSockets) ---
+python-socketio>=5.11.0    # Obsługa protokołu Socket.IO
+aiohttp>=3.9.0             # WYMAGANE przez klienta Socket.IO (debug_client.py i boty)
 
-redis>=5.0.1              # Klient Redis (async)
-asyncpg>=0.29.0           # Klient PostgreSQL (najszybszy driver async)
+# --- Databases ---
+redis>=5.0.1               # Klient Redis (async)
+asyncpg>=0.29.0            # Klient PostgreSQL (przyda się w późniejszych fazach)
 
+# --- Testing ---
 pytest>=8.0.0
-pytest-asyncio>=0.23.0    # Obsługa async w testach
-httpx>=0.26.0             # Klient HTTP do testowania endpointów API
+pytest-asyncio>=0.23.0     # Obsługa async w testach
+httpx>=0.26.0              # Klient HTTP do testowania endpointów REST API (np. /health)
