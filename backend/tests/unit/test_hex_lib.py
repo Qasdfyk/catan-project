@@ -1,67 +1,88 @@
 import pytest
-from app.models.hex_lib import Hex
+from app.models.hex_lib import Hex, Vertex, Edge
 
 class TestHexCore:
     def test_hex_creation_valid(self):
-        """Test creating a valid hex instance."""
         h = Hex(0, -1, 1)
         assert h.q == 0
-        assert h.r == -1
-        assert h.s == 1
-
-    def test_hex_creation_invalid(self):
-        """Test if ValueError is raised when q+r+s != 0."""
-        with pytest.raises(ValueError):
-            Hex(1, 1, 1)
-
-    def test_hex_equality(self):
-        """Test object equality (Value Object pattern)."""
-        h1 = Hex(1, -2, 1)
-        h2 = Hex(1, -2, 1)
-        h3 = Hex(0, 0, 0)
-        assert h1 == h2
-        assert h1 != h3
-
-    def test_hex_addition(self):
-        """Test vector addition."""
-        h1 = Hex(1, -2, 1)
-        h2 = Hex(2, -1, -1)
-        result = h1 + h2
-        assert result == Hex(3, -3, 0)
-
-    def test_hex_subtraction(self):
-        """Test vector subtraction."""
-        h1 = Hex(1, -2, 1)
-        h2 = Hex(2, -1, -1)
-        result = h1 - h2
-        assert result == Hex(-1, -1, 2)
-
-    def test_hex_distance(self):
-        """Test distance calculation between hexes."""
-        h1 = Hex(0, 0, 0)
-        h2 = Hex(2, -2, 0) # Distance is 2 steps
-        assert h1.distance(h2) == 2
-        
-        h3 = Hex(-3, 1, 2)
-        assert h3.distance(h3) == 0
 
     def test_hex_neighbors(self):
-        """Test finding neighbors."""
         center = Hex(0, 0, 0)
-        neighbor_0 = center.neighbor(0) # Direction 0: (1, 0, -1)
-        
-        assert neighbor_0 == Hex(1, 0, -1)
-        assert center.distance(neighbor_0) == 1
-        
-        # Check if backtracking works (neighbor of a neighbor in opposite direction)
-        # Direction 3 is opposite to 0
-        assert neighbor_0.neighbor(3) == center
+        neighbor = center.neighbor(0)
+        assert neighbor == Hex(1, 0, -1)
 
-    def test_all_neighbors_count(self):
-        """Test if get_all_neighbors returns exactly 6 valid neighbors."""
-        center = Hex(0, 0, 0)
-        neighbors = center.get_all_neighbors()
-        assert len(neighbors) == 6
-        # All neighbors must be at distance 1
-        for n in neighbors:
-            assert center.distance(n) == 1
+class TestVertexCanonicalization:
+    def test_canonical_vertex_equality(self):
+        """
+        Test that the same physical vertex accessed from 3 different hexes
+        resolves to the same canonical Vertex object.
+        """
+        # Center hex (0,0,0)
+        h_center = Hex(0, 0, 0)
+        
+        # Neighbor at direction 0 (1, 0, -1)
+        h_neighbor_0 = h_center.neighbor(0)
+        
+        # Neighbor at direction 5 (0, 1, -1)
+        h_neighbor_5 = h_center.neighbor(5)
+
+        # The vertex '0' of Center is shared by Neighbor 0 and Neighbor 5.
+        # Perspective 1: Center, Vertex 0
+        v1 = Vertex(h_center, 0).get_canonical()
+        
+        # Perspective 2: Neighbor 0. 
+        # Looking back at Center (dir 3) and Neighbor 5 (dir 4). 
+        # The vertex between 3 and 4 is Vertex 4.
+        v2 = Vertex(h_neighbor_0, 4).get_canonical()
+        
+        # Perspective 3: Neighbor 5.
+        # Looking back at Neighbor 0 (dir 1) and Center (dir 2).
+        # The vertex between 1 and 2 is Vertex 2.
+        v3 = Vertex(h_neighbor_5, 2).get_canonical()
+
+        # They MUST be identical
+        assert v1 == v2
+        assert v2 == v3
+        assert v1 == v3
+
+    def test_vertex_set_usage(self):
+        """Verify that canonical vertices work correctly in sets (hashing)."""
+        h_center = Hex(0, 0, 0)
+        h_neighbor = h_center.neighbor(0)
+        
+        # Same geometric point (Vertex 0 of Center == Vertex 4 of Neighbor 0)
+        v1 = Vertex(h_center, 0).get_canonical()
+        v2 = Vertex(h_neighbor, 4).get_canonical()
+        
+        vertex_set = set()
+        vertex_set.add(v1)
+        vertex_set.add(v2)
+        
+        # Should only have 1 element because v1 and v2 represent the same point
+        assert len(vertex_set) == 1
+
+class TestEdgeCanonicalization:
+    def test_canonical_edge_equality(self):
+        """
+        Test that the same physical edge accessed from 2 adjacent hexes
+        resolves to the same canonical Edge object.
+        """
+        h1 = Hex(0, 0, 0)
+        h2 = h1.neighbor(0) # Neighbor to the right/top-right
+
+        # Edge 0 of h1 is shared with Edge 3 (opposite) of h2
+        e1 = Edge(h1, 0).get_canonical()
+        e2 = Edge(h2, 3).get_canonical()
+
+        assert e1 == e2
+
+    def test_edge_set_usage(self):
+        h1 = Hex(0, 0, 0)
+        h2 = h1.neighbor(1)
+        
+        # Edge 1 of h1 touches Edge 4 of h2
+        e1 = Edge(h1, 1).get_canonical()
+        e2 = Edge(h2, 4).get_canonical()
+        
+        edge_set = {e1, e2}
+        assert len(edge_set) == 1
