@@ -10,17 +10,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@pixi/react": "^8.0.4",
-    "pixi.js": "^8.14.3",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
+    "@pixi/react": "^7.1.1",
+    "pixi.js": "^7.3.3",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^7.9.6",
     "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@types/node": "^24.10.1",
-    "@types/react": "^19.2.5",
-    "@types/react-dom": "^19.2.3",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
     "@vitejs/plugin-react": "^5.1.1",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
