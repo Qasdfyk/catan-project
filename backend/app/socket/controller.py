@@ -45,3 +45,43 @@ class SocketController:
         else:
             print(f"Game {room_id} not found in Redis")
             await self.sio.emit('error', {'message': 'Game not found'}, room=sid)
+
+    async def on_action(self, sid, data):
+        """
+        Generic handler for player actions.
+        Expected data: { 'room_id': str, 'type': str, 'payload': dict }
+        """
+        room_id = data.get('room_id')
+        action_type = data.get('type')
+        
+        print(f"Action {action_type} from {sid} in room {room_id}")
+
+        # 1. Load Game State
+        game_dict = await self.redis.get_game_state(room_id)
+        if not game_dict:
+            return
+        
+        # 2. Deserialize to Python Object
+        game = GameSerializer.dict_to_game(game_dict)
+
+        # 3. Execute Logic based on Action Type
+        try:
+            if action_type == 'roll_dice':
+                roll = game.roll_dice()
+                print(f"Dice rolled: {roll}")
+            
+            elif action_type == 'end_turn':
+                game.next_turn()
+                print(f"Turn ended. Now playing: {game.get_current_player().name}")
+            
+            # TODO: Add 'end_turn', 'build_road' etc. later
+
+            # 4. Save updated state back to Redis
+            new_game_dict = GameSerializer.game_to_dict(game)
+            await self.redis.save_game_state(room_id, new_game_dict)
+
+            # 5. Broadcast new state to EVERYONE in the room
+            await self.sio.emit('game_state_update', new_game_dict, room=room_id)
+
+        except ValueError as e:
+            await self.sio.emit('game_error', {'message': str(e)}, room=sid)

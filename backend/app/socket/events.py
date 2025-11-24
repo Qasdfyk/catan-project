@@ -9,9 +9,7 @@ def register_socket_events(sio: socketio.AsyncServer, app_state):
     # Instantiate the controller with dependencies from app_state
     controller = SocketController(sio, app_state.redis)
 
-    # Register event handlers explicitly
     sio.on("connect", controller.on_connect)
     sio.on("disconnect", controller.on_disconnect)
-    
-    # Register the join_game handler
     sio.on("join_game", controller.on_join_game)
+    sio.on("game_action", controller.on_action)
