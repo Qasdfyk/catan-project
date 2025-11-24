@@ -1,6 +1,3 @@
-# ============================================================
-# FILE: tests/unit/test_game_state.py
-# ============================================================
 import pytest
 from unittest.mock import patch 
 from app.models.game import GameState, TurnPhase
@@ -53,6 +50,10 @@ class TestGameState:
         assert game.board is not None
         assert game.current_turn_index == 0
         assert game.turn_phase == TurnPhase.ROLL_DICE
+        
+        assert game.players[0].id != ""
+        assert game.players[1].id != ""
+        assert game.players[0].id != game.players[1].id
 
     def test_invalid_player_count(self):
         with pytest.raises(ValueError):

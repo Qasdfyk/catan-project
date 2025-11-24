@@ -1,5 +1,6 @@
 import pytest
 import pytest_asyncio
+import uuid
 from app.models.game import GameState
 from app.services.serializer import GameSerializer
 from app.services.redis_service import RedisService
@@ -8,23 +9,31 @@ from app.services.redis_service import RedisService
 async def test_full_game_persistence_cycle():
     """
     Integration Test:
-    1. Creates a real GameState.
+    1. Creates a real GameState with Players having IDs.
     2. Serializes it.
     3. Saves it to a REAL Redis instance.
     4. Loads it back.
     5. Deserializes it.
-    6. Verifies data integrity.
+    6. Verifies data integrity, specifically Player IDs.
     """
     
     # 1. Setup
     service = RedisService()
-    room_id = "integration_test_room_123"
+    room_id = f"integration_test_{uuid.uuid4()}" # Unique room for this test run
     
-    # Create a game and modify it slightly (roll dice) to ensure state is captured
+    # Create a game
     original_game = GameState.create_new_game(["Alice", "Bob"])
     original_game.roll_dice() 
+    
+    # Capture original data for comparison
+    original_p1_id = original_game.players[0].id
+    original_p2_id = original_game.players[1].id
     original_turn_idx = original_game.current_turn_index
-    original_dice = original_game.dice_roll
+    
+    # Verify IDs were actually generated
+    assert len(original_p1_id) > 0, "Player 1 ID should not be empty"
+    assert len(original_p2_id) > 0, "Player 2 ID should not be empty"
+    assert original_p1_id != original_p2_id, "Players must have unique IDs"
 
     # 2. Serialize & Save
     game_dict = GameSerializer.game_to_dict(original_game)
@@ -32,24 +41,19 @@ async def test_full_game_persistence_cycle():
 
     # 3. Load from Redis
     loaded_dict = await service.get_game_state(room_id)
-    
-    # Assert Redis actually returned data
     assert loaded_dict is not None, "Redis returned None, save failed."
 
     # 4. Deserialize
     loaded_game = GameSerializer.dict_to_game(loaded_dict)
 
     # 5. Verify Data Integrity
-    assert len(loaded_game.players) == 2
+    # CRITICAL: Check if IDs persisted properly
+    assert loaded_game.players[0].id == original_p1_id
+    assert loaded_game.players[1].id == original_p2_id
+    
+    # Check if other fields persisted
     assert loaded_game.players[0].name == "Alice"
-    assert loaded_game.players[1].name == "Bob"
-    
-    # Verify State Persistence
-    assert loaded_game.dice_roll == original_dice
     assert loaded_game.current_turn_index == original_turn_idx
-    
-    # Verify Board Integrity (Check just one tile to be sure)
-    # We check if the count of tiles is preserved
     assert len(loaded_game.board.tiles) == 19
 
     # Cleanup

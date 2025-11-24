@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional
+from app.models.hex_lib import Hex, Vertex
 import random
 
 from app.models.hex_lib import Hex
@@ -13,6 +14,19 @@ class ResourceType(str, Enum):
     WHEAT = "wheat"
     ORE = "ore"
     DESERT = "desert"
+
+class PortType(str, Enum):
+    GENERIC_3_1 = "3:1"
+    WOOD_2_1 = "wood_2:1"
+    BRICK_2_1 = "brick_2:1"
+    SHEEP_2_1 = "sheep_2:1"
+    WHEAT_2_1 = "wheat_2:1"
+    ORE_2_1 = "ore_2:1"
+
+@dataclass
+class Port:
+    type: PortType
+    valid_vertices: List['Vertex']
 
 @dataclass
 class Tile:
@@ -28,6 +42,7 @@ class Board:
     """
     def __init__(self):
         self.tiles: Dict[Hex, Tile] = {}
+        self.ports: List[Port] = []
 
     def get_tile(self, hex_coords: Hex) -> Optional[Tile]:
         """Retrieve a tile by its coordinates."""
@@ -79,7 +94,19 @@ class Board:
                 number_idx += 1
             
             board.tiles[h] = Tile(hex_coords=h, resource=res, number=num)
+        
+        # Port 3:1
+        h1 = Hex(0, -2, 2)
+        v1 = Vertex(h1, 0).get_canonical()
+        v2 = Vertex(h1, 1).get_canonical()
+        board.ports.append(Port(PortType.GENERIC_3_1, [v1, v2]))
 
+        # Port Wood 2:1
+        h2 = Hex(1, -2, 1)
+        v3 = Vertex(h2, 0).get_canonical()
+        v4 = Vertex(h2, 1).get_canonical()
+        board.ports.append(Port(PortType.WOOD_2_1, [v3, v4]))
+        #TODO - add more ports like in real catan
         return board
 
     @staticmethod

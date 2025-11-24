@@ -70,15 +70,16 @@ class GameSerializer:
     @staticmethod
     def _player_to_dict(p: Player) -> Dict[str, Any]:
         return {
+            "id": p.id,
             "name": p.name,
             "color": p.color.value,
-            "resources": dict(p.resources), # Counter to dict
+            "resources": dict(p.resources),
             "victory_points": p.victory_points
         }
 
     @staticmethod
     def _dict_to_player(d: Dict[str, Any]) -> Player:
-        p = Player(name=d["name"], color=PlayerColor(d["color"]))
+        p = Player(name=d["name"], color=PlayerColor(d["color"]), id=d.get("id", ""))
         p.victory_points = d["victory_points"]
         for res_str, amount in d["resources"].items():
             p.resources[ResourceType(res_str)] = amount

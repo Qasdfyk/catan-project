@@ -1,12 +1,10 @@
-# ============================================================
-# FILE: app/models/game.py
-# ============================================================
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Set
 import random
+import uuid  # Added UUID import
 from dataclasses import dataclass, field
 from enum import Enum
 
-from app.models.board import Board, ResourceType, Tile
+from app.models.board import Board, ResourceType, Tile, PortType
 from app.models.player import Player, PlayerColor
 from app.models.hex_lib import Edge, Vertex, Hex
 
@@ -55,7 +53,9 @@ class GameState:
         colors = list(PlayerColor)
         
         for i, name in enumerate(player_names):
-            players.append(Player(name=name, color=colors[i]))
+            # FIX: Generate UUID for players
+            new_player = Player(name=name, color=colors[i], id=str(uuid.uuid4()))
+            players.append(new_player)
 
         # Find Desert to place Robber initially
         desert_hex = next((t.hex_coords for t in board.tiles.values() if t.resource == ResourceType.DESERT), Hex(0,0,0))
@@ -127,6 +127,47 @@ class GameState:
             raise ValueError("Invalid hex coordinates.")
         
         self.robber_hex = target_hex
+
+    def steal_resource(self, thief: Player, victim: Player):
+        """
+        Steals 1 random resource from victim to thief.
+        Required: Robber must be on a hex adjacent to victim's settlement.
+        """
+        self._verify_turn(thief)
+        
+        if self.robber_hex is None:
+            raise ValueError("Robber is not placed on the board.")
+        
+        if thief == victim:
+            raise ValueError("Cannot steal from yourself.")
+
+        # 1. Validate geometric proximity to Robber
+        robber_vertices = [Vertex(self.robber_hex, d).get_canonical() for d in range(6)]
+        
+        has_building = False
+        for v in robber_vertices:
+            if v in self.settlements and self.settlements[v].owner == victim.color:
+                has_building = True
+                break
+        
+        if not has_building:
+            raise ValueError("Victim has no building on the robber hex.")
+
+        # 2. Execute Steal
+        total_res_count = sum(victim.resources.values())
+        if total_res_count == 0:
+            raise ValueError("Victim has no resources to steal.")
+
+        pool = []
+        for res, count in victim.resources.items():
+            pool.extend([res] * count)
+        
+        stolen_res = random.choice(pool)
+        
+        victim.remove_resource(stolen_res, 1)
+        thief.add_resource(stolen_res, 1)
+        
+        return stolen_res
 
     # --- Building Logic ---
 
@@ -207,10 +248,29 @@ class GameState:
 
     def trade_with_bank(self, player: Player, give: ResourceType, get: ResourceType):
         self._verify_turn(player)
-        if player.resources[give] < 4:
-            raise ValueError(f"Not enough {give} to trade. Need 4.")
         
-        player.remove_resource(give, 4)
+        cost = 4
+        
+        player_ports = self._get_player_ports(player)
+        
+        if PortType.GENERIC_3_1 in player_ports:
+            cost = 3
+            
+        special_port_map = {
+            ResourceType.WOOD: PortType.WOOD_2_1,
+            ResourceType.BRICK: PortType.BRICK_2_1,
+            ResourceType.SHEEP: PortType.SHEEP_2_1,
+            ResourceType.WHEAT: PortType.WHEAT_2_1,
+            ResourceType.ORE: PortType.ORE_2_1
+        }
+        
+        if special_port_map.get(give) in player_ports:
+            cost = 2
+            
+        if player.resources[give] < cost:
+            raise ValueError(f"Not enough {give}. Need {cost} (Rate {cost}:1).")
+        
+        player.remove_resource(give, cost)
         player.add_resource(get, 1)
 
     # --- Helpers ---
@@ -228,9 +288,56 @@ class GameState:
             self.winner = p
 
     def _check_longest_road(self, player: Player):
-        # Placeholder for Phase 1 logic
-        # In future phases, this will run BFS/DFS to calculate road length
-        pass
+        """
+        Calculates the longest continuous road for the player.
+        Updates special victory points (placeholder for 2 VP logic).
+        """
+        player_edges = [e for e, color in self.roads.items() if color == player.color]
+        
+        if not player_edges:
+            return 0
+
+        max_length = 0
+        
+        for start_edge in player_edges:
+            # FIX: Count the starting edge itself (1) + the max depth found from it
+            length = 1 + self._dfs_longest_road(start_edge, player.color, set([start_edge]))
+            if length > max_length:
+                max_length = length
+                
+        return max_length
+
+    def _dfs_longest_road(self, current_edge: Edge, color: PlayerColor, visited: Set[Edge]) -> int:
+        """
+        Recursive DFS to find longest path.
+        Nodes are Edges. Adjacency is defined by shared vertices.
+        """
+        max_depth = 0
+        
+        vertices = current_edge.get_vertices()
+        
+        for v in vertices:
+            building = self.settlements.get(v)
+            if building and building.owner != color:
+                continue
+            
+            connected_edges = v.get_touching_edges()
+            
+            for next_edge in connected_edges:
+                canon_next = next_edge.get_canonical()
+                
+                if canon_next == current_edge:
+                    continue
+                    
+                if self.roads.get(canon_next) == color and canon_next not in visited:
+                    new_visited = visited.copy()
+                    new_visited.add(canon_next)
+                    
+                    depth = 1 + self._dfs_longest_road(canon_next, color, new_visited)
+                    if depth > max_depth:
+                        max_depth = depth
+                        
+        return max_depth
 
     def _has_road_connectivity(self, player: Player, edge: Edge) -> bool:
         connected_edges = edge.get_connected_edges()
@@ -251,3 +358,15 @@ class GameState:
             if self.roads.get(e) == player.color:
                 return True
         return False
+
+    def _get_player_ports(self, player: Player) -> Set[PortType]:
+        """Returns a set of port types the player has access to."""
+        owned_ports = set()
+        for port in self.board.ports:
+            for v in port.valid_vertices:
+                canon_v = v.get_canonical()
+                if canon_v in self.settlements:
+                    if self.settlements[canon_v].owner == player.color:
+                        owned_ports.add(port.type)
+                        break
+        return owned_ports
