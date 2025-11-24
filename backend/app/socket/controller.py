@@ -14,40 +14,34 @@ class SocketController:
 
     async def on_connect(self, sid, environ):
         print(f"Client connected: {sid}")
-        # Here we could validate tokens in the future
+        #TODO validate tokens
 
     async def on_disconnect(self, sid):
         print(f"Client disconnected: {sid}")
+    
+    async def on_join_game(self, sid, data):
+        """
+        Handler for 'join_game' event.
+        Expects data: {'room_id': '...'}
+        """
+        room_id = data.get('room_id')
+        if not room_id:
+            print(f"Error: join_game called without room_id by {sid}")
+            return
 
-    async def on_create_test_game(self, sid):
-        """
-        Refactored handler for creating a test game.
-        """
-        print(f"Processing create_test_game for {sid}...")
-        
-        # 1. Game Logic
-        game = GameState.create_new_game(["Player1", "Player2"])
-        room_id = "room_test_1"
-        
-        # 2. Serialization
-        game_dict = GameSerializer.game_to_dict(game)
-        
-        # 3. Save to Redis (Using injected service)
-        await self.redis.save_game_state(room_id, game_dict)
-        
-        # 4. Load back to verify
-        loaded_dict = await self.redis.get_game_state(room_id)
-        
-        if loaded_dict:
-            loaded_game = GameSerializer.dict_to_game(loaded_dict)
-            current_player = loaded_game.get_current_player()
-            
-            # Emit back to the specific client
-            await self.sio.emit('test_response', {
-                'status': 'success', 
-                'room_id': room_id,
-                'player_name': current_player.name,
-                'player_id': current_player.id # Send ID back to frontend
-            }, room=sid)
+        print(f"Socket {sid} joining room {room_id}")
+
+        # 1. Join the Socket.IO room so this user receives future broadcasts
+        await self.sio.enter_room(sid, room_id)
+
+        # 2. Fetch current game state from Redis
+        game_state = await self.redis.get_game_state(room_id)
+
+        if game_state:
+            # 3. Emit the state ONLY to the user who just joined (for initial sync)
+            # We use 'game_state_update' which matches the frontend listener
+            await self.sio.emit('game_state_update', game_state, room=sid)
+            print(f"Sent initial game state to {sid}")
         else:
-            await self.sio.emit('test_response', {'status': 'error'}, room=sid)
+            print(f"Game {room_id} not found in Redis")
+            await self.sio.emit('error', {'message': 'Game not found'}, room=sid)
