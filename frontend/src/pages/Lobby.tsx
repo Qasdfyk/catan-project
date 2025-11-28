@@ -7,7 +7,10 @@ export const Lobby = () => {
     const [playerNames, setPlayerNames] = useState('Alice, Bob');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    const { isConnected } = useGame();
+    
+    // NAPRAWA TUTAJ: Dodano setPlayerId do wyciągniętych wartości
+    const { isConnected, setPlayerId } = useGame();
+    
     const navigate = useNavigate();
 
     const handleCreateGame = async () => {
@@ -35,7 +38,12 @@ export const Lobby = () => {
 
             const data: GameCreateResponse = await response.json();
             
-            // Redirect to Game Room
+            if (data.players && data.players.length > 0) {
+                const p = data.players[0] as any;
+                setPlayerId(p.id);
+                console.log("✅ Identity saved. I am:", p.name, p.id);
+            }
+            
             navigate(`/game/${data.room_id}`);
 
         } catch (err: any) {
@@ -47,7 +55,7 @@ export const Lobby = () => {
 
     return (
         <div style={{ textAlign: 'center', marginTop: '50px', fontFamily: 'sans-serif' }}>
-            <h1>🏰 Catan Lobby (Phase 4)</h1>
+            <h1>🏰 Catan Lobby</h1>
             
             <div style={{ 
                 margin: '10px auto', width: 'fit-content', padding: '5px 15px', borderRadius: '4px',
@@ -71,7 +79,7 @@ export const Lobby = () => {
                     disabled={loading || !isConnected}
                     style={{ padding: '10px 20px', cursor: 'pointer', background: '#007bff', color: '#fff', border: 'none', borderRadius: '4px'}}
                 >
-                    {loading ? 'Creating...' : 'Create Game (POST)'}
+                    {loading ? 'Creating...' : 'Create Game'}
                 </button>
                 {error && <p style={{color: 'red', marginTop: '10px'}}>{error}</p>}
             </div>

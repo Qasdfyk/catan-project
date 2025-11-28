@@ -1,16 +1,12 @@
 from typing import Dict, Any, List
 import json
 from app.models.game import GameState, Building, TurnPhase, BuildingType
-from app.models.board import Board, Tile, ResourceType
+from app.models.board import Board, Tile, ResourceType, Port, PortType
 from app.models.player import Player, PlayerColor
 from app.models.hex_lib import Hex, Vertex, Edge
 
 class GameSerializer:
-    """
-    Responsibility: Convert complex GameState objects to JSON-compatible dictionaries and back.
-    Crucial for storing state in Redis.
-    """
-
+    
     @staticmethod
     def game_to_dict(game: GameState) -> Dict[str, Any]:
         return {
@@ -18,9 +14,14 @@ class GameSerializer:
             "current_turn_index": game.current_turn_index,
             "turn_phase": game.turn_phase.value,
             "dice_roll": game.dice_roll,
+            
+            "setup_queue": game.setup_queue,
+            "setup_waiting_for_road": game.setup_waiting_for_road,
+            
             "robber_hex": GameSerializer._hex_to_dict(game.robber_hex) if game.robber_hex else None,
             "is_game_over": game.is_game_over,
             "winner_name": game.winner.name if game.winner else None,
+            
             "board_tiles": GameSerializer._tiles_to_list(game.board.tiles),
             "roads": GameSerializer._roads_to_list(game.roads),
             "settlements": GameSerializer._settlements_to_list(game.settlements)
@@ -28,27 +29,24 @@ class GameSerializer:
 
     @staticmethod
     def dict_to_game(data: Dict[str, Any]) -> GameState:
-        # Reconstruct Board
         board = Board()
-        # We assume the board structure (hexes) is static for a standard game, 
-        # but here we reload the resources/numbers from state.
         board.tiles = GameSerializer._list_to_tiles(data["board_tiles"])
 
-        # Reconstruct Players
         players = [GameSerializer._dict_to_player(p) for p in data["players"]]
 
-        # Reconstruct GameState
         game = GameState(
-            board=board,
+            board=board, 
             players=players,
             current_turn_index=data["current_turn_index"],
             dice_roll=data["dice_roll"],
             turn_phase=TurnPhase(data["turn_phase"]),
             robber_hex=GameSerializer._dict_to_hex(data["robber_hex"]) if data["robber_hex"] else None,
-            is_game_over=data["is_game_over"]
+            is_game_over=data["is_game_over"],
+            
+            setup_queue=data.get("setup_queue", []),
+            setup_waiting_for_road=data.get("setup_waiting_for_road", False)
         )
         
-        # Restore complex dicts
         game.roads = GameSerializer._list_to_roads(data["roads"])
         game.settlements = GameSerializer._list_to_settlements(data["settlements"])
         
@@ -56,8 +54,6 @@ class GameSerializer:
             game.winner = next((p for p in players if p.name == data["winner_name"]), None)
 
         return game
-
-    # --- Helpers for Nested Objects ---
 
     @staticmethod
     def _hex_to_dict(h: Hex) -> Dict[str, int]:
@@ -87,7 +83,6 @@ class GameSerializer:
 
     @staticmethod
     def _tiles_to_list(tiles: Dict[Hex, Tile]) -> List[Dict]:
-        """Convert Map<Hex, Tile> to List of objects for JSON."""
         result = []
         for h, tile in tiles.items():
             result.append({
@@ -111,7 +106,6 @@ class GameSerializer:
 
     @staticmethod
     def _roads_to_list(roads: Dict[Edge, PlayerColor]) -> List[Dict]:
-        # Edge needs to be serialized. Edge = (Hex, direction)
         result = []
         for edge, color in roads.items():
             result.append({
@@ -126,7 +120,6 @@ class GameSerializer:
         result = {}
         for item in data:
             h = GameSerializer._dict_to_hex(item["hex"])
-            # Recreate canonical edge
             edge = Edge(h, item["direction"]).get_canonical()
             result[edge] = PlayerColor(item["color"])
         return result

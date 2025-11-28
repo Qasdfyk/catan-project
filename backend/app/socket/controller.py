@@ -96,6 +96,17 @@ class SocketController:
                 game.place_road(current_player, edge)
                 print(f"Road placed at {hex_obj} dir {direction}")
 
+            elif action_type == 'upgrade_city':
+                # payload: { hex: {q,r,s}, direction: int }
+                h_data = payload.get('hex')
+                direction = payload.get('direction')
+                
+                hex_obj = Hex(h_data['q'], h_data['r'], h_data['s'])
+                vertex = Vertex(hex_obj, direction)
+                
+                game.upgrade_to_city(current_player, vertex)
+                print(f"City upgraded at {hex_obj} dir {direction}")
+
             # 4. Save updated state back to Redis
             new_game_dict = GameSerializer.game_to_dict(game)
             await self.redis.save_game_state(room_id, new_game_dict)

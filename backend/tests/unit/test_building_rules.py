@@ -30,17 +30,16 @@ class TestBuildingRules:
 
     def test_distance_rule(self, game):
         alice = game.players[0]
-        v1 = Vertex(Hex(0,0,0), 0)
-        v_neighbor = v1.get_adjacent_vertices()[0]
+        v1 = Vertex(Hex(0,0,0), 0) # Center, Top-Right Vertex
         
         game.place_settlement(alice, v1, free=True)
         
-        bob = game.players[1]
-        # In MAIN_PHASE, we need to ensure it's Bob's turn if we want to be strict,
-        # but `free=True` bypasses turn check in logic? 
-        # Actually `place_settlement` checks `_verify_turn` ONLY if `not free`.
-        # So Bob can place free out of turn in this unit test context.
+        # We need a vertex DIRECTLY connected to v1.
+        # v1 is connected via Edge 0 to Vertex 1.
+        # So Vertex 1 on the same Hex is definitely a neighbor.
+        v_neighbor = Vertex(Hex(0,0,0), 1)
         
+        bob = game.players[1]
         with pytest.raises(ValueError, match="Distance Rule"):
             game.place_settlement(bob, v_neighbor, free=True)
 

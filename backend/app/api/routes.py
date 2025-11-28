@@ -10,9 +10,6 @@ router = APIRouter()
 
 @router.post("/games", response_model=GameResponse)
 async def create_game(request: Request, body: GameCreateRequest):
-    """
-    Creates new game, saves it in Redis, return room_id.
-    """
     room_id = str(uuid.uuid4())[:8]
     
     try:
@@ -29,7 +26,7 @@ async def create_game(request: Request, body: GameCreateRequest):
         room_id=room_id,
         status="created",
         created_at=datetime.now().isoformat(),
-        players=[p.name for p in game.players]
+        players=game_dict["players"]
     )
 
 @router.get("/games/{room_id}")
