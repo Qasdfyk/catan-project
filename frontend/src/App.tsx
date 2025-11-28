@@ -2,11 +2,10 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { GameProvider } from './context/GameContext';
 import { Lobby } from './pages/Lobby';
 import { GameRoom } from './pages/GameRoom';
-import './App.css'; // Opcjonalne, jeśli masz jakieś style
+import './App.css';
 
 function App() {
   return (
-    // 1. GameProvider otacza całą aplikację, aby Socket był dostępny wszędzie
     <GameProvider>
       {/* 2. BrowserRouter obsługuje zmianę URL w przeglądarce */}
       <BrowserRouter>

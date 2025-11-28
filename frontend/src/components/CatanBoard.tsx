@@ -15,16 +15,13 @@ export const CatanBoard = ({ gameState }: CatanBoardProps) => {
         const { x, y } = hexToPixel(tile.hex);
         const color = getResourceColor(tile.resource);
 
-        // Zamiana koloru HEX string na number
         const colorNumber = parseInt(color.replace('#', ''), 16);
 
         g.clear();
         
-        // Wypełnienie i obrys
         g.beginFill(colorNumber);
         g.lineStyle(2, 0x333333, 1);
 
-        // Rysowanie wielokąta
         const points = [];
         for (let i = 0; i < 6; i++) {
             const angle_deg = 60 * i - 30;
@@ -37,7 +34,6 @@ export const CatanBoard = ({ gameState }: CatanBoardProps) => {
         g.drawPolygon(points);
         g.endFill();
 
-        // Rysowanie Robbera
         if (gameState.robber_hex && 
             gameState.robber_hex.q === tile.hex.q && 
             gameState.robber_hex.r === tile.hex.r && 
@@ -67,9 +63,6 @@ export const CatanBoard = ({ gameState }: CatanBoardProps) => {
                                     x={pos.x}
                                     y={pos.y}
                                     anchor={0.5}
-                                    // 2. KLUCZOWA POPRAWKA:
-                                    // Tworzymy new TextStyle i rzutujemy na 'any', 
-                                    // aby ominąć konflikt typów TypeScripta.
                                     style={
                                         new TextStyle({
                                             fontFamily: 'Arial',

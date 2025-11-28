@@ -11,21 +11,17 @@ router = APIRouter()
 @router.post("/games", response_model=GameResponse)
 async def create_game(request: Request, body: GameCreateRequest):
     """
-    Tworzy nową grę, zapisuje ją w Redis i zwraca room_id.
+    Creates new game, saves it in Redis, return room_id.
     """
-    # 1. Generujemy unikalny ID pokoju
-    room_id = str(uuid.uuid4())[:8] # np. "a1b2c3d4"
+    room_id = str(uuid.uuid4())[:8]
     
-    # 2. Tworzymy logikę gry (Python Core)
     try:
         game = GameState.create_new_game(body.player_names)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-    # 3. Serializacja
     game_dict = GameSerializer.game_to_dict(game)
     
-    # 4. Zapis do Redis (używamy serwisu z app.state)
     redis: RedisService = request.app.state.redis
     await redis.save_game_state(room_id, game_dict)
     
@@ -39,7 +35,7 @@ async def create_game(request: Request, body: GameCreateRequest):
 @router.get("/games/{room_id}")
 async def get_game_state(request: Request, room_id: str):
     """
-    Zwraca aktualny stan gry z Redisa (np. dla debugowania lub reconnectu).
+    Return current game state from Redis.
     """
     redis: RedisService = request.app.state.redis
     game_data = await redis.get_game_state(room_id)

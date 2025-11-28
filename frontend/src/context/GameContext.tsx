@@ -43,7 +43,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
         });
 
         socket.on('game_state_update', (data: GameState) => {
-            console.log('📥 Game State Updated'); // Usunąłem wyświetlanie całego obiektu, żeby nie śmiecić
+            console.log('📥 Game State Updated');
             setGameState(data);
         });
 
@@ -55,7 +55,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
         };
     }, []);
 
-    // --- FIX: Używamy useCallback, aby funkcja nie była tworzona na nowo przy każdym renderze ---
+
     const joinRoom = useCallback((roomId: string) => {
         if (!socket.connected) socket.connect();
         socket.emit('join_game', { room_id: roomId });
