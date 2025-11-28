@@ -9,21 +9,23 @@ class TestHarvestMechanics:
         game = GameState.create_new_game(["Alice", "Bob"])
         alice = game.players[0]
 
+        # FIX: Bypass Setup Phase constraints
+        game.turn_phase = TurnPhase.MAIN_PHASE
+
         center_hex = Hex(0,0,0)
         
-        # 1. CLEAN BOARD
         game.board.tiles.clear()
         
         game.robber_hex = Hex(100, -100, 0)
 
-        # 3. Setup Logic
+        # Setup Logic
         game.board.tiles[center_hex] = Tile(center_hex, ResourceType.WOOD, 6)
         vertex = Vertex(center_hex, 0)
         game.place_settlement(alice, vertex, free=True)
         
         assert alice.resources[ResourceType.WOOD] == 0
 
-        # 4. Trigger
+        # Trigger
         game.turn_phase = TurnPhase.ROLL_DICE
         game.distribute_resources(6)
 
@@ -33,6 +35,9 @@ class TestHarvestMechanics:
         game = GameState.create_new_game(["Alice", "Bob"])
         alice = game.players[0]
         bob = game.players[1]
+        
+        # FIX: Bypass Setup Phase constraints
+        game.turn_phase = TurnPhase.MAIN_PHASE
 
         center_hex = Hex(0,0,0)
         
@@ -55,6 +60,9 @@ class TestHarvestMechanics:
         game = GameState.create_new_game(["Alice", "Bob"])
         alice = game.players[0]
         
+        # FIX: Bypass Setup Phase constraints
+        game.turn_phase = TurnPhase.MAIN_PHASE
+
         center_hex = Hex(0,0,0)
         
         game.board.tiles.clear()

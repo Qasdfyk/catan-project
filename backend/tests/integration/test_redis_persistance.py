@@ -1,7 +1,6 @@
 import pytest
-import pytest_asyncio
 import uuid
-from app.models.game import GameState
+from app.models.game import GameState, TurnPhase
 from app.services.serializer import GameSerializer
 from app.services.redis_service import RedisService
 
@@ -23,6 +22,9 @@ async def test_full_game_persistence_cycle():
     
     # Create a game
     original_game = GameState.create_new_game(["Alice", "Bob"])
+    
+    # FIX: Force phase to ROLL_DICE to allow rolling
+    original_game.turn_phase = TurnPhase.ROLL_DICE
     original_game.roll_dice() 
     
     # Capture original data for comparison

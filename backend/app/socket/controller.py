@@ -1,5 +1,6 @@
 import socketio
 from app.models.game import GameState
+from app.models.hex_lib import Hex, Vertex, Edge
 from app.services.serializer import GameSerializer
 from app.services.redis_service import RedisService
 
@@ -39,7 +40,6 @@ class SocketController:
 
         if game_state:
             # 3. Emit the state ONLY to the user who just joined (for initial sync)
-            # We use 'game_state_update' which matches the frontend listener
             await self.sio.emit('game_state_update', game_state, room=sid)
             print(f"Sent initial game state to {sid}")
         else:
@@ -53,6 +53,7 @@ class SocketController:
         """
         room_id = data.get('room_id')
         action_type = data.get('type')
+        payload = data.get('payload', {})
         
         print(f"Action {action_type} from {sid} in room {room_id}")
 
@@ -63,6 +64,7 @@ class SocketController:
         
         # 2. Deserialize to Python Object
         game = GameSerializer.dict_to_game(game_dict)
+        current_player = game.get_current_player()
 
         # 3. Execute Logic based on Action Type
         try:
@@ -73,8 +75,26 @@ class SocketController:
             elif action_type == 'end_turn':
                 game.next_turn()
                 print(f"Turn ended. Now playing: {game.get_current_player().name}")
-            
-            # TODO: Add 'end_turn', 'build_road' etc. later
+
+            elif action_type == 'build_settlement':
+                h_data = payload.get('hex') # {q, r, s}
+                direction = payload.get('direction')
+                
+                hex_obj = Hex(h_data['q'], h_data['r'], h_data['s'])
+                vertex = Vertex(hex_obj, direction)
+                
+                game.place_settlement(current_player, vertex)
+                print(f"Settlement placed at {hex_obj} dir {direction}")
+
+            elif action_type == 'build_road':
+                h_data = payload.get('hex')
+                direction = payload.get('direction')
+                
+                hex_obj = Hex(h_data['q'], h_data['r'], h_data['s'])
+                edge = Edge(hex_obj, direction)
+                
+                game.place_road(current_player, edge)
+                print(f"Road placed at {hex_obj} dir {direction}")
 
             # 4. Save updated state back to Redis
             new_game_dict = GameSerializer.game_to_dict(game)
@@ -84,4 +104,9 @@ class SocketController:
             await self.sio.emit('game_state_update', new_game_dict, room=room_id)
 
         except ValueError as e:
+            # Send error only to the specific client
             await self.sio.emit('game_error', {'message': str(e)}, room=sid)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            await self.sio.emit('game_error', {'message': "Internal Server Error"}, room=sid)

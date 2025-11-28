@@ -1,6 +1,6 @@
 from typing import List, Optional, Dict, Set
 import random
-import uuid  # Added UUID import
+import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -9,6 +9,7 @@ from app.models.player import Player, PlayerColor
 from app.models.hex_lib import Edge, Vertex, Hex
 
 class TurnPhase(str, Enum):
+    SETUP = "setup"
     ROLL_DICE = "roll_dice"
     MAIN_PHASE = "main_phase"
 
@@ -30,7 +31,13 @@ class GameState:
     players: List[Player] = field(default_factory=list)
     current_turn_index: int = 0
     dice_roll: Optional[int] = None
-    turn_phase: TurnPhase = TurnPhase.ROLL_DICE
+    turn_phase: TurnPhase = TurnPhase.SETUP
+    
+    # --- SETUP PHASE STATE ---
+    # Stores the sequence of player indices for the snake draft (e.g., [0, 1, 1, 0])
+    setup_queue: List[int] = field(default_factory=list)
+    # If true, the current player in setup must place a road. If false, they must place a settlement.
+    setup_waiting_for_road: bool = False
     
     # Robber position (initially should be on Desert)
     robber_hex: Optional[Hex] = None 
@@ -40,7 +47,7 @@ class GameState:
     
     # State of the board
     roads: Dict[Edge, PlayerColor] = field(default_factory=dict)
-    # Now maps Vertex -> Building object
+    # Maps Vertex -> Building object
     settlements: Dict[Vertex, Building] = field(default_factory=dict)
 
     @staticmethod
@@ -53,17 +60,24 @@ class GameState:
         colors = list(PlayerColor)
         
         for i, name in enumerate(player_names):
-            # FIX: Generate UUID for players
+            # Generate UUIDs for players to allow reconnects/identification
             new_player = Player(name=name, color=colors[i], id=str(uuid.uuid4()))
             players.append(new_player)
 
         # Find Desert to place Robber initially
         desert_hex = next((t.hex_coords for t in board.tiles.values() if t.resource == ResourceType.DESERT), Hex(0,0,0))
 
+        # Create Snake Draft Queue: [0, 1, 2, 2, 1, 0]
+        indices = list(range(len(players)))
+        setup_queue = indices + indices[::-1]
+
         return GameState(
             board=board, 
             players=players,
-            robber_hex=desert_hex
+            robber_hex=desert_hex,
+            turn_phase=TurnPhase.SETUP,
+            setup_queue=setup_queue,
+            current_turn_index=setup_queue[0]
         )
 
     def get_current_player(self) -> Player:
@@ -74,13 +88,36 @@ class GameState:
         if self.is_game_over:
             return
 
-        self.current_turn_index = (self.current_turn_index + 1) % len(self.players)
-        self.dice_roll = None
-        self.turn_phase = TurnPhase.ROLL_DICE
+        if self.turn_phase == TurnPhase.SETUP:
+            # Logic for advancing through the snake draft
+            if not self.setup_queue:
+                # Setup is done, switch to normal game
+                self.turn_phase = TurnPhase.ROLL_DICE
+                self.current_turn_index = 0
+                return
+
+            # Remove the turn we just finished
+            self.setup_queue.pop(0)
+
+            if not self.setup_queue:
+                # End of Setup
+                self.turn_phase = TurnPhase.ROLL_DICE
+                self.current_turn_index = 0
+                self.dice_roll = None
+                self.setup_waiting_for_road = False
+            else:
+                # Next setup turn
+                self.current_turn_index = self.setup_queue[0]
+                self.setup_waiting_for_road = False # Next player starts with a settlement
+        else:
+            # Normal Game Loop
+            self.current_turn_index = (self.current_turn_index + 1) % len(self.players)
+            self.dice_roll = None
+            self.turn_phase = TurnPhase.ROLL_DICE
 
     def roll_dice(self) -> int:
         if self.turn_phase != TurnPhase.ROLL_DICE:
-            raise ValueError("Cannot roll dice in MAIN_PHASE.")
+            raise ValueError("Cannot roll dice in this phase.")
 
         d1 = random.randint(1, 6)
         d2 = random.randint(1, 6)
@@ -129,10 +166,6 @@ class GameState:
         self.robber_hex = target_hex
 
     def steal_resource(self, thief: Player, victim: Player):
-        """
-        Steals 1 random resource from victim to thief.
-        Required: Robber must be on a hex adjacent to victim's settlement.
-        """
         self._verify_turn(thief)
         
         if self.robber_hex is None:
@@ -172,7 +205,16 @@ class GameState:
     # --- Building Logic ---
 
     def place_road(self, player: Player, edge: Edge, free: bool = False):
-        if not free:
+        """
+        Handles placement of a road.
+        In SETUP phase, checks for 'setup_waiting_for_road' state.
+        """
+        # Phase Check
+        if self.turn_phase == TurnPhase.SETUP:
+            if not self.setup_waiting_for_road:
+                raise ValueError("You must place a settlement first in the setup phase.")
+            free = True # Force free in setup
+        elif not free:
             self._verify_turn(player)
 
         canonical_edge = edge.get_canonical()
@@ -193,8 +235,21 @@ class GameState:
         self.roads[canonical_edge] = player.color
         self._check_longest_road(player)
 
+        # Logic for auto-ending turn in SETUP phase after road is placed
+        if self.turn_phase == TurnPhase.SETUP:
+            self.next_turn()
+
     def place_settlement(self, player: Player, vertex: Vertex, free: bool = False):
-        if not free:
+        """
+        Handles placement of a settlement.
+        In SETUP phase, ensures player isn't supposed to be placing a road.
+        """
+        # Phase Check
+        if self.turn_phase == TurnPhase.SETUP:
+            if self.setup_waiting_for_road:
+                raise ValueError("You must place a road to finish your setup turn.")
+            free = True
+        elif not free:
             self._verify_turn(player)
 
         canonical_vertex = vertex.get_canonical()
@@ -215,6 +270,7 @@ class GameState:
             ResourceType.WOOD: 1, ResourceType.BRICK: 1,
             ResourceType.WHEAT: 1, ResourceType.SHEEP: 1
         }
+        
         if not free and not player.has_resources(settlement_cost):
             raise ValueError("Insufficient resources for a settlement.")
 
@@ -223,6 +279,18 @@ class GameState:
         
         self.settlements[canonical_vertex] = Building(player.color, BuildingType.SETTLEMENT)
         player.victory_points += 1
+        
+        # SETUP PHASE: Handle State Transition & Initial Resources
+        if self.turn_phase == TurnPhase.SETUP:
+            # Give resources if this is the SECOND settlement (Snake Draft Rule)
+            # A player has 2 settlements total in setup. If they now have 2, this was the second one.
+            player_buildings = [b for b in self.settlements.values() if b.owner == player.color]
+            if len(player_buildings) == 2:
+                self._give_initial_resources(player, canonical_vertex)
+            
+            # Now wait for road
+            self.setup_waiting_for_road = True
+
         self._check_victory()
 
     def upgrade_to_city(self, player: Player, vertex: Vertex):
@@ -288,10 +356,6 @@ class GameState:
             self.winner = p
 
     def _check_longest_road(self, player: Player):
-        """
-        Calculates the longest continuous road for the player.
-        Updates special victory points (placeholder for 2 VP logic).
-        """
         player_edges = [e for e, color in self.roads.items() if color == player.color]
         
         if not player_edges:
@@ -300,7 +364,6 @@ class GameState:
         max_length = 0
         
         for start_edge in player_edges:
-            # FIX: Count the starting edge itself (1) + the max depth found from it
             length = 1 + self._dfs_longest_road(start_edge, player.color, set([start_edge]))
             if length > max_length:
                 max_length = length
@@ -308,10 +371,6 @@ class GameState:
         return max_length
 
     def _dfs_longest_road(self, current_edge: Edge, color: PlayerColor, visited: Set[Edge]) -> int:
-        """
-        Recursive DFS to find longest path.
-        Nodes are Edges. Adjacency is defined by shared vertices.
-        """
         max_depth = 0
         
         vertices = current_edge.get_vertices()
@@ -340,16 +399,22 @@ class GameState:
         return max_depth
 
     def _has_road_connectivity(self, player: Player, edge: Edge) -> bool:
+        """
+        Check if road is connected to own settlement OR own road.
+        """
+        # 1. Check direct connection to own roads
         connected_edges = edge.get_connected_edges()
         for e in connected_edges:
             if self.roads.get(e) == player.color:
                 return True
         
+        # 2. Check connection to own settlements (at either end)
         vertices = edge.get_vertices()
         for v in vertices:
-            building = self.settlements.get(v)
+            building = self.settlements.get(v.get_canonical())
             if building and building.owner == player.color:
                 return True
+        
         return False
 
     def _has_settlement_connectivity(self, player: Player, vertex: Vertex) -> bool:
@@ -359,8 +424,23 @@ class GameState:
                 return True
         return False
 
+    def _give_initial_resources(self, player: Player, vertex: Vertex):
+        """
+        Setup Phase: Give 1 resource for each tile adjacent to the settlement.
+        """
+        # Identify the 3 hexes touching this vertex
+        hexes = [
+            vertex.owner,
+            vertex.owner.neighbor(vertex.direction),
+            vertex.owner.neighbor((vertex.direction - 1) % 6)
+        ]
+        
+        for h in hexes:
+            tile = self.board.get_tile(h)
+            if tile and tile.resource != ResourceType.DESERT:
+                player.add_resource(tile.resource, 1)
+
     def _get_player_ports(self, player: Player) -> Set[PortType]:
-        """Returns a set of port types the player has access to."""
         owned_ports = set()
         for port in self.board.ports:
             for v in port.valid_vertices:
