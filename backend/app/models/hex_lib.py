@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from typing import List
+from functools import lru_cache
+from typing import List, Tuple
 
 @dataclass(frozen=True, order=True)
 class Hex:
@@ -28,6 +29,46 @@ class Hex:
         ]
         return self + vectors[direction % 6]
 
+@lru_cache(maxsize=8192)
+def _canonical_vertex(h: Hex, d: int) -> Tuple[Hex, int]:
+    # LOOKUP TABLE FOR VERTEX EQUIVALENCE
+    # Key: My Vertex Direction (0-5)
+    # Value: List of (Neighbor Direction, Vertex Index on that Neighbor)
+    lookup = {
+        0: [(5, 2), (0, 4)],
+        1: [(0, 3), (1, 5)],
+        2: [(1, 4), (2, 0)],
+        3: [(2, 5), (3, 1)],
+        4: [(3, 0), (4, 2)],
+        5: [(4, 1), (5, 3)]
+    }
+
+    # 1. Candidate: Self
+    candidates = [(h, d)]
+
+    # 2. Candidates: Neighbors
+    mappings = lookup[d]
+    for neigh_dir, neigh_vert_idx in mappings:
+        n_hex = h.neighbor(neigh_dir)
+        candidates.append((n_hex, neigh_vert_idx))
+
+    # Sort: Smallest (q, r, s) becomes the canonical representation
+    candidates.sort(key=lambda x: (x[0].q, x[0].r, x[0].s))
+
+    return candidates[0]
+
+@lru_cache(maxsize=8192)
+def _canonical_edge(h1: Hex, d1: int) -> Tuple[Hex, int]:
+    n = h1.neighbor(d1)
+    d2 = (d1 + 3) % 6
+
+    c1 = (h1, d1)
+    c2 = (n, d2)
+
+    if (c1[0].q, c1[0].r, c1[0].s) < (c2[0].q, c2[0].r, c2[0].s):
+        return c1
+    return c2
+
 @dataclass(frozen=True)
 class Vertex:
     owner: Hex
@@ -38,34 +79,8 @@ class Vertex:
         Returns the unique identifier for a vertex.
         In Pointy Top, Vertex 0 is at -30 deg (Top Right).
         """
-        h = self.owner
-        d = self.direction % 6
-        
-        # LOOKUP TABLE FOR VERTEX EQUIVALENCE
-        # Key: My Vertex Direction (0-5)
-        # Value: List of (Neighbor Direction, Vertex Index on that Neighbor)
-        lookup = {
-            0: [(5, 2), (0, 4)],
-            1: [(0, 3), (1, 5)],
-            2: [(1, 4), (2, 0)],
-            3: [(2, 5), (3, 1)],
-            4: [(3, 0), (4, 2)],
-            5: [(4, 1), (5, 3)]
-        }
-        
-        # 1. Candidate: Self
-        candidates = [(h, d)]
-        
-        # 2. Candidates: Neighbors
-        mappings = lookup[d]
-        for neigh_dir, neigh_vert_idx in mappings:
-            n_hex = h.neighbor(neigh_dir)
-            candidates.append((n_hex, neigh_vert_idx))
-            
-        # Sort: Smallest (q, r, s) becomes the canonical representation
-        candidates.sort(key=lambda x: (x[0].q, x[0].r, x[0].s))
-        
-        return Vertex(candidates[0][0], candidates[0][1])
+        owner, direction = _canonical_vertex(self.owner, self.direction % 6)
+        return Vertex(owner, direction)
 
     def get_touching_edges(self) -> List['Edge']:
         """
@@ -80,12 +95,12 @@ class Vertex:
         # 3. Spoke Edge (Radiating outward)
         # Lookup table for the 3rd edge based on geometry
         lookup_spoke = {
-            0: (5, 2), # For V0, take Neighbor 5's Edge 2
-            1: (0, 3),
-            2: (1, 4),
-            3: (2, 5),
-            4: (3, 0),
-            5: (4, 1)
+            0: (5, 1), # For V0, take Neighbor 5's Edge 1
+            1: (0, 2),
+            2: (1, 3),
+            3: (2, 4),
+            4: (3, 5),
+            5: (4, 0)
         }
         
         neigh_dir, neigh_edge_idx = lookup_spoke[self.direction % 6]
@@ -93,6 +108,14 @@ class Vertex:
         e3 = Edge(n_hex, neigh_edge_idx).get_canonical()
         
         return [e1, e2, e3]
+
+    def get_touching_hexes(self) -> List[Hex]:
+        """Returns the 3 hexes meeting at this vertex (some may be off the board)."""
+        return [
+            self.owner,
+            self.owner.neighbor(self.direction),
+            self.owner.neighbor((self.direction - 1) % 6),
+        ]
 
     def get_adjacent_vertices(self) -> List['Vertex']:
         canon_self = self.get_canonical()
@@ -125,24 +148,17 @@ class Edge:
         Edge N is shared with Neighbor N.
         On Neighbor N, it corresponds to Edge (N+3)%6.
         """
-        h1 = self.owner
-        d1 = self.direction % 6
-        
-        n = h1.neighbor(d1)
-        d2 = (d1 + 3) % 6
-        
-        c1 = (h1, d1)
-        c2 = (n, d2)
-        
-        if (c1[0].q, c1[0].r, c1[0].s) < (c2[0].q, c2[0].r, c2[0].s):
-            return Edge(c1[0], c1[1])
-        else:
-            return Edge(c2[0], c2[1])
+        owner, direction = _canonical_edge(self.owner, self.direction % 6)
+        return Edge(owner, direction)
 
     def get_vertices(self) -> List[Vertex]:
         v1 = Vertex(self.owner, self.direction).get_canonical()
         v2 = Vertex(self.owner, (self.direction + 1) % 6).get_canonical()
         return [v1, v2]
+
+    def get_touching_hexes(self) -> List[Hex]:
+        """Returns the 2 hexes sharing this edge (one may be off the board)."""
+        return [self.owner, self.owner.neighbor(self.direction)]
 
     def get_connected_edges(self) -> List['Edge']:
         v1, v2 = self.get_vertices()
