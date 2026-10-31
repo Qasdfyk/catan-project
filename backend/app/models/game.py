@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from app.models.board import Board, ResourceType, PortType
-from app.models.player import Player, PlayerColor
+from app.models.player import DevCard, Player, PlayerColor
 from app.models.hex_lib import Edge, Vertex, Hex
 
 class TurnPhase(str, Enum):
@@ -14,6 +14,7 @@ class TurnPhase(str, Enum):
     DISCARD = "discard"
     MOVE_ROBBER = "move_robber"
     STEAL = "steal"
+    ROAD_BUILDING = "road_building"
     MAIN_PHASE = "main_phase"
 
 class BuildingType(str, Enum):
@@ -26,6 +27,12 @@ SETTLEMENT_COST = {
     ResourceType.WHEAT: 1, ResourceType.SHEEP: 1
 }
 CITY_COST = {ResourceType.ORE: 3, ResourceType.WHEAT: 2}
+DEV_CARD_COST = {ResourceType.ORE: 1, ResourceType.WHEAT: 1, ResourceType.SHEEP: 1}
+
+DEV_DECK = (
+    [DevCard.KNIGHT] * 14 + [DevCard.VICTORY_POINT] * 5 +
+    [DevCard.ROAD_BUILDING] * 2 + [DevCard.YEAR_OF_PLENTY] * 2 + [DevCard.MONOPOLY] * 2
+)
 
 MAX_ROADS = 15
 MAX_SETTLEMENTS = 5
@@ -34,6 +41,9 @@ MAX_CITIES = 4
 VICTORY_POINTS_TO_WIN = 10
 LONGEST_ROAD_MIN_LENGTH = 5
 LONGEST_ROAD_POINTS = 2
+LARGEST_ARMY_MIN_KNIGHTS = 3
+LARGEST_ARMY_POINTS = 2
+ROAD_BUILDING_ROADS = 2
 DISCARD_LIMIT = 7
 BANK_SIZE = 19
 LOG_SIZE = 40
@@ -46,6 +56,7 @@ PHASE_ERRORS = {
     TurnPhase.DISCARD: "Waiting for players to discard.",
     TurnPhase.MOVE_ROBBER: "You must move the robber first.",
     TurnPhase.STEAL: "You must choose a player to steal from.",
+    TurnPhase.ROAD_BUILDING: "Place your free roads first.",
     TurnPhase.MAIN_PHASE: "You have already rolled the dice.",
 }
 
@@ -78,6 +89,14 @@ class GameState:
 
     # Cards each player still has to give up after a 7
     pending_discards: Dict[PlayerColor, int] = field(default_factory=dict)
+
+    # Where the turn continues after the robber or free roads (a card can be played before rolling)
+    return_phase: TurnPhase = TurnPhase.MAIN_PHASE
+    free_roads_left: int = 0
+
+    dev_deck: List[DevCard] = field(default_factory=list)
+    dev_card_played: bool = False
+    largest_army_holder: Optional[PlayerColor] = None
 
     longest_road_holder: Optional[PlayerColor] = None
     road_lengths: Dict[PlayerColor, int] = field(default_factory=dict)
@@ -113,9 +132,13 @@ class GameState:
         indices = list(range(len(players)))
         setup_queue = indices + indices[::-1]
 
+        dev_deck = list(DEV_DECK)
+        random.shuffle(dev_deck)
+
         return GameState(
             board=board, 
             players=players,
+            dev_deck=dev_deck,
             robber_hex=desert_hex,
             turn_phase=TurnPhase.SETUP,
             setup_queue=setup_queue,
@@ -156,6 +179,11 @@ class GameState:
                 self.current_turn_index = self.setup_queue[0]
         else:
             # Normal Game Loop
+            finished = self.get_current_player()
+            finished.dev_cards.extend(finished.new_dev_cards)
+            finished.new_dev_cards = []
+            self.dev_card_played = False
+
             self.current_turn_index = (self.current_turn_index + 1) % len(self.players)
             self.dice_roll = None
             self.turn_phase = TurnPhase.ROLL_DICE
@@ -176,6 +204,7 @@ class GameState:
         self._log(f"{player.name} rolled {self.dice_roll}.")
 
         if self.dice_roll == 7:
+            self.return_phase = TurnPhase.MAIN_PHASE
             self._start_robber_sequence()
         else:
             self.turn_phase = TurnPhase.MAIN_PHASE
@@ -262,7 +291,7 @@ class GameState:
         
         self.robber_hex = target_hex
         self._log(f"{player.name} moved the robber.")
-        self.turn_phase = TurnPhase.STEAL if self.steal_victims(player) else TurnPhase.MAIN_PHASE
+        self.turn_phase = TurnPhase.STEAL if self.steal_victims(player) else self.return_phase
 
     def steal_victims(self, thief: Player) -> List[Player]:
         """Opponents with cards and a building on the robber hex."""
@@ -306,7 +335,7 @@ class GameState:
         victim.remove_resource(stolen_res, 1)
         thief.add_resource(stolen_res, 1)
         self._log(f"{thief.name} stole a card from {victim.name}.")
-        self.turn_phase = TurnPhase.MAIN_PHASE
+        self.turn_phase = self.return_phase
         
         return stolen_res
 
@@ -324,6 +353,9 @@ class GameState:
             if not self.setup_waiting_for_road:
                 raise ValueError("You must place a settlement first in the setup phase.")
             free = True # Force free in setup
+        elif self.turn_phase == TurnPhase.ROAD_BUILDING:
+            self._verify_turn(player, TurnPhase.ROAD_BUILDING)
+            free = True
         elif not free:
             self._verify_turn(player)
 
@@ -343,8 +375,16 @@ class GameState:
         # Logic for auto-ending turn in SETUP phase after road is placed
         if self.turn_phase == TurnPhase.SETUP:
             self.next_turn()
-        else:
-            self._check_victory()
+            return
+        if self.turn_phase == TurnPhase.ROAD_BUILDING:
+            self.free_roads_left -= 1
+            self._finish_road_building_if_done(player)
+        self._check_victory()
+
+    def _finish_road_building_if_done(self, player: Player):
+        if self.free_roads_left == 0 or not self._free_road_edges(player):
+            self.free_roads_left = 0
+            self.turn_phase = self.return_phase
 
     def _verify_road_location(self, player: Player, canonical_edge: Edge):
         if not self.board.is_on_board(canonical_edge):
@@ -486,6 +526,94 @@ class GameState:
         player.add_resource(get, 1)
         self._log(f"{player.name} traded {cost} {give.value} for 1 {get.value}.")
 
+    # --- Development Cards ---
+
+    def buy_dev_card(self, player: Player):
+        self._verify_turn(player)
+        if not self.dev_deck:
+            raise ValueError("There are no development cards left.")
+        if not player.has_resources(DEV_CARD_COST):
+            raise ValueError("Insufficient resources for a development card.")
+
+        player.deduct_resources(DEV_CARD_COST)
+        player.new_dev_cards.append(self.dev_deck.pop())
+        self._log(f"{player.name} bought a development card.")
+        self._check_victory()
+
+    def _spend_dev_card(self, player: Player, card: DevCard):
+        """A card can be played before or after rolling, one per turn."""
+        self._verify_active()
+        if not self._is_current(player):
+            raise ValueError("It is not your turn.")
+        if self.turn_phase not in (TurnPhase.ROLL_DICE, TurnPhase.MAIN_PHASE):
+            raise ValueError(PHASE_ERRORS[self.turn_phase])
+        if self.dev_card_played:
+            raise ValueError("You have already played a development card this turn.")
+        if card not in player.dev_cards:
+            if card in player.new_dev_cards:
+                raise ValueError("You cannot play a card in the turn you bought it.")
+            raise ValueError("You do not have that card.")
+
+        player.dev_cards.remove(card)
+        self.dev_card_played = True
+
+    def play_knight(self, player: Player):
+        self._spend_dev_card(player, DevCard.KNIGHT)
+        player.knights_played += 1
+        self._log(f"{player.name} played a Knight.")
+        self._update_largest_army(player)
+        self.return_phase = self.turn_phase
+        self.turn_phase = TurnPhase.MOVE_ROBBER
+        self._check_victory()
+
+    def play_road_building(self, player: Player):
+        if not self._free_road_edges(player):
+            raise ValueError("You have nowhere to build a road.")
+        self._spend_dev_card(player, DevCard.ROAD_BUILDING)
+        self._log(f"{player.name} played Road Building.")
+        self.free_roads_left = ROAD_BUILDING_ROADS
+        self.return_phase = self.turn_phase
+        self.turn_phase = TurnPhase.ROAD_BUILDING
+
+    def play_year_of_plenty(self, player: Player, first: ResourceType, second: ResourceType):
+        wanted = [first, second]
+        if any(r not in TRADABLE_RESOURCES for r in wanted):
+            raise ValueError("That resource cannot be taken.")
+        if any(self.bank_count(r) < wanted.count(r) for r in wanted):
+            raise ValueError("The bank does not have those cards.")
+
+        self._spend_dev_card(player, DevCard.YEAR_OF_PLENTY)
+        for resource in wanted:
+            player.add_resource(resource, 1)
+        self._log(f"{player.name} played Year of Plenty.")
+
+    def play_monopoly(self, player: Player, resource: ResourceType):
+        if resource not in TRADABLE_RESOURCES:
+            raise ValueError("That resource cannot be taken.")
+
+        self._spend_dev_card(player, DevCard.MONOPOLY)
+        taken = 0
+        for other in self.players:
+            if other.color != player.color:
+                taken += other.resources[resource]
+                other.resources[resource] = 0
+        player.add_resource(resource, taken)
+        self._log(f"{player.name} played Monopoly on {resource.value} and took {taken}.")
+
+    def _update_largest_army(self, player: Player):
+        """The first to 3 knights holds it; a challenger must have strictly more."""
+        holder = self.largest_army_holder
+        if holder == player.color or player.knights_played < LARGEST_ARMY_MIN_KNIGHTS:
+            return
+        if holder is not None:
+            previous = self.get_player_by_color(holder)
+            if player.knights_played <= previous.knights_played:
+                return
+            previous.victory_points -= LARGEST_ARMY_POINTS
+        player.victory_points += LARGEST_ARMY_POINTS
+        self.largest_army_holder = player.color
+        self._log(f"{player.name} has the Largest Army ({player.knights_played}).")
+
     # --- Legal Moves ---
 
     def legal_settlements(self, player: Player) -> List[Vertex]:
@@ -512,12 +640,35 @@ class GameState:
         if self.turn_phase == TurnPhase.SETUP:
             if not self.setup_waiting_for_road:
                 return []
+        elif self.turn_phase == TurnPhase.ROAD_BUILDING:
+            return self._free_road_edges(player)
         elif self.turn_phase != TurnPhase.MAIN_PHASE or not player.has_resources(ROAD_COST):
             return []
+        return self._free_road_edges(player)
+
+    def _free_road_edges(self, player: Player) -> List[Edge]:
         return [
             e for e in self.board.edges()
             if self._passes(self._verify_road_location, player, e)
         ]
+
+    def can_buy_dev_card(self, player: Player) -> bool:
+        return (
+            not self.is_game_over and self._is_current(player)
+            and self.turn_phase == TurnPhase.MAIN_PHASE
+            and bool(self.dev_deck) and player.has_resources(DEV_CARD_COST)
+        )
+
+    def playable_dev_cards(self, player: Player) -> List[DevCard]:
+        if (
+            self.is_game_over or not self._is_current(player) or self.dev_card_played
+            or self.turn_phase not in (TurnPhase.ROLL_DICE, TurnPhase.MAIN_PHASE)
+        ):
+            return []
+        playable = sorted(set(player.dev_cards) - {DevCard.VICTORY_POINT}, key=lambda c: c.value)
+        if DevCard.ROAD_BUILDING in playable and not self._free_road_edges(player):
+            playable.remove(DevCard.ROAD_BUILDING)
+        return playable
 
     def legal_cities(self, player: Player) -> List[Vertex]:
         if (
@@ -570,7 +721,7 @@ class GameState:
 
     def _check_victory(self):
         p = self.get_current_player()
-        if not self.is_game_over and p.victory_points >= VICTORY_POINTS_TO_WIN:
+        if not self.is_game_over and p.victory_points + p.hidden_points() >= VICTORY_POINTS_TO_WIN:
             self.is_game_over = True
             self.winner = p
             self._log(f"{p.name} won the game!")

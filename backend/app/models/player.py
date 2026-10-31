@@ -1,9 +1,16 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict
+from typing import Dict, List
 from collections import Counter
 
 from app.models.board import ResourceType
+
+class DevCard(str, Enum):
+    KNIGHT = "knight"
+    VICTORY_POINT = "victory_point"
+    ROAD_BUILDING = "road_building"
+    YEAR_OF_PLENTY = "year_of_plenty"
+    MONOPOLY = "monopoly"
 
 class PlayerColor(str, Enum):
     RED = "red"
@@ -21,7 +28,12 @@ class Player:
     color: PlayerColor
     # Resources are stored in a Counter for easy addition/subtraction
     resources: Counter = field(default_factory=Counter)
+    # Public points; Victory Point cards stay hidden until they decide the game
     victory_points: int = 0
+    dev_cards: List[DevCard] = field(default_factory=list)
+    # Bought this turn, so not playable yet
+    new_dev_cards: List[DevCard] = field(default_factory=list)
+    knights_played: int = 0
     
     # Internal identifier; clients address players by seat number
     id: str = field(default="") 
@@ -41,6 +53,9 @@ class Player:
 
     def card_count(self) -> int:
         return sum(self.resources.values())
+
+    def hidden_points(self) -> int:
+        return (self.dev_cards + self.new_dev_cards).count(DevCard.VICTORY_POINT)
 
     def has_resources(self, cost: Dict[ResourceType, int]) -> bool:
         """

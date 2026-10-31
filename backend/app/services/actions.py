@@ -69,6 +69,13 @@ ACTIONS: Dict[str, Callable[[GameState, Player, Dict[str, Any]], Any]] = {
     "discard": lambda g, p, data: g.discard(p, _parse_cards(data.get("cards"))),
     "move_robber": lambda g, p, data: g.move_robber(p, _parse_hex(data.get("hex"))),
     "steal": lambda g, p, data: g.steal_resource(p, _parse_victim(g, data.get("victim_seat"))),
+    "buy_dev_card": lambda g, p, _: g.buy_dev_card(p),
+    "play_knight": lambda g, p, _: g.play_knight(p),
+    "play_road_building": lambda g, p, _: g.play_road_building(p),
+    "play_year_of_plenty": lambda g, p, data: g.play_year_of_plenty(
+        p, _parse_resource(data.get("first")), _parse_resource(data.get("second"))
+    ),
+    "play_monopoly": lambda g, p, data: g.play_monopoly(p, _parse_resource(data.get("resource"))),
     "trade_with_bank": lambda g, p, data: g.trade_with_bank(
         p, _parse_resource(data.get("give")), _parse_resource(data.get("get"))
     ),

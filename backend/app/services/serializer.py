@@ -1,7 +1,7 @@
 from typing import Dict, Any, List
 from app.models.game import GameState, Building, TurnPhase, BuildingType
 from app.models.board import Board, Tile, ResourceType, Port, PortType
-from app.models.player import Player, PlayerColor
+from app.models.player import DevCard, Player, PlayerColor
 from app.models.hex_lib import Hex, Vertex, Edge
 
 class GameSerializer:
@@ -22,6 +22,12 @@ class GameSerializer:
             "longest_road_holder": game.longest_road_holder.value if game.longest_road_holder else None,
             "road_lengths": {c.value: n for c, n in game.road_lengths.items()},
             "log": game.log,
+            
+            "return_phase": game.return_phase.value,
+            "free_roads_left": game.free_roads_left,
+            "dev_deck": [c.value for c in game.dev_deck],
+            "dev_card_played": game.dev_card_played,
+            "largest_army_holder": game.largest_army_holder.value if game.largest_army_holder else None,
             
             "robber_hex": GameSerializer._hex_to_dict(game.robber_hex) if game.robber_hex else None,
             "is_game_over": game.is_game_over,
@@ -57,7 +63,13 @@ class GameSerializer:
             pending_discards={PlayerColor(c): n for c, n in data.get("pending_discards", {}).items()},
             longest_road_holder=PlayerColor(data["longest_road_holder"]) if data.get("longest_road_holder") else None,
             road_lengths={PlayerColor(c): n for c, n in data.get("road_lengths", {}).items()},
-            log=data.get("log", [])
+            log=data.get("log", []),
+            
+            return_phase=TurnPhase(data.get("return_phase", TurnPhase.MAIN_PHASE)),
+            free_roads_left=data.get("free_roads_left", 0),
+            dev_deck=[DevCard(c) for c in data.get("dev_deck", [])],
+            dev_card_played=data.get("dev_card_played", False),
+            largest_army_holder=PlayerColor(data["largest_army_holder"]) if data.get("largest_army_holder") else None
         )
         
         game.roads = GameSerializer._list_to_roads(data["roads"])
@@ -91,13 +103,19 @@ class GameSerializer:
             "name": p.name,
             "color": p.color.value,
             "resources": dict(p.resources),
-            "victory_points": p.victory_points
+            "victory_points": p.victory_points,
+            "dev_cards": [c.value for c in p.dev_cards],
+            "new_dev_cards": [c.value for c in p.new_dev_cards],
+            "knights_played": p.knights_played
         }
 
     @staticmethod
     def _dict_to_player(d: Dict[str, Any]) -> Player:
         p = Player(name=d["name"], color=PlayerColor(d["color"]), id=d.get("id", ""))
         p.victory_points = d["victory_points"]
+        p.dev_cards = [DevCard(c) for c in d.get("dev_cards", [])]
+        p.new_dev_cards = [DevCard(c) for c in d.get("new_dev_cards", [])]
+        p.knights_played = d.get("knights_played", 0)
         for res_str, amount in d["resources"].items():
             p.resources[ResourceType(res_str)] = amount
         return p

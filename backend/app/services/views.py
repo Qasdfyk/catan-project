@@ -10,7 +10,8 @@ from app.services.serializer import GameSerializer
 
 PUBLIC_GAME_FIELDS = (
     "turn_phase", "dice_roll", "setup_waiting_for_road", "robber_hex", "is_game_over",
-    "board_tiles", "ports", "roads", "settlements", "longest_road_holder", "log",
+    "board_tiles", "ports", "roads", "settlements", "longest_road_holder", "largest_army_holder",
+    "free_roads_left", "log",
 )
 
 
@@ -52,6 +53,8 @@ def public_view(room: Dict[str, Any], game: Optional[GameState]) -> Dict[str, An
             "card_count": player.card_count(),
             "road_length": game.road_lengths.get(player.color, 0),
             "pending_discard": game.pending_discards.get(player.color, 0),
+            "dev_card_count": len(player.dev_cards) + len(player.new_dev_cards),
+            "knights_played": player.knights_played,
         }
         for seat, player in enumerate(game.players)
     ]
@@ -60,6 +63,7 @@ def public_view(room: Dict[str, Any], game: Optional[GameState]) -> Dict[str, An
         "current_seat": game.current_turn_index,
         "winner_seat": game.players.index(game.winner) if game.winner else None,
         "bank": {r.value: game.bank_count(r) for r in TRADABLE_RESOURCES},
+        "dev_deck_count": len(game.dev_deck),
     }
     return view
 
@@ -74,6 +78,8 @@ def private_view(game: Optional[GameState], seat: int) -> Dict[str, Any]:
         "seat": seat,
         "resources": {r.value: player.resources[r] for r in TRADABLE_RESOURCES},
         "trade_rates": {r.value: game.trade_rate(player, r) for r in TRADABLE_RESOURCES},
+        "dev_cards": [c.value for c in player.dev_cards + player.new_dev_cards],
+        "hidden_points": player.hidden_points(),
         "legal": {
             "settlements": [_vertex(v) for v in game.legal_settlements(player)],
             "roads": [_edge(e) for e in game.legal_roads(player)],
@@ -81,6 +87,8 @@ def private_view(game: Optional[GameState], seat: int) -> Dict[str, Any]:
             "robber_hexes": [_hex(h) for h in game.legal_robber_hexes(player)],
             "steal_targets": _steal_targets(game, seat) if is_current else [],
             "must_discard": game.pending_discards.get(player.color, 0),
+            "can_buy_dev_card": game.can_buy_dev_card(player),
+            "playable_dev_cards": [c.value for c in game.playable_dev_cards(player)],
         },
     }
 
