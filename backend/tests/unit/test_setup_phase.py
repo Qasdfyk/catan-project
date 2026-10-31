@@ -82,7 +82,7 @@ class TestSetupPhase:
         
         game.turn_phase = TurnPhase.SETUP
         
-        v1 = Vertex(Hex(10,10,-20), 0)
+        v1 = Vertex(h1, 3)
         game.place_settlement(alice, v1)
         assert sum(alice.resources.values()) == 0
         

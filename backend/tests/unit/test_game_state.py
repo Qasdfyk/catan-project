@@ -52,4 +52,5 @@ class TestGameState:
             
             assert roll == 7
             assert game.dice_roll == 7
-            assert game.turn_phase == TurnPhase.MAIN_PHASE
+            # Nobody holds more than 7 cards, so the robber moves right away
+            assert game.turn_phase == TurnPhase.MOVE_ROBBER

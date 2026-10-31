@@ -18,8 +18,8 @@ class TestRobberStealing:
         alice = game.players[0]
         bob = game.players[1]
         
-        # FIX: Advance phase to allow actions
-        game.turn_phase = TurnPhase.MAIN_PHASE
+        # Stealing is only possible right after moving the robber
+        game.turn_phase = TurnPhase.STEAL
 
         # Setup: Bob has a settlement at (0,0,0) and 1 WOOD
         h = Hex(0,0,0)
@@ -45,14 +45,13 @@ class TestRobberStealing:
         alice = game.players[0]
         bob = game.players[1]
         
-        # FIX: Advance phase
-        game.turn_phase = TurnPhase.MAIN_PHASE
+        game.turn_phase = TurnPhase.STEAL
 
         h_robber = Hex(0,0,0)
         game.robber_hex = h_robber
         
         # Bob has a settlement far away
-        game.place_settlement(bob, Vertex(Hex(5, -5, 0), 0), free=True)
+        game.place_settlement(bob, Vertex(Hex(2, -2, 0), 0), free=True)
         
         with pytest.raises(ValueError, match="Victim has no building on the robber hex"):
             game.steal_resource(alice, bob)
@@ -65,8 +64,7 @@ class TestRobberStealing:
         alice = game.players[0]
         bob = game.players[1]
 
-        # FIX: Advance phase
-        game.turn_phase = TurnPhase.MAIN_PHASE
+        game.turn_phase = TurnPhase.STEAL
 
         # Force robber to be None (simulating initialization state before any move)
         game.robber_hex = None

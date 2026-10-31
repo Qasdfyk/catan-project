@@ -4,18 +4,49 @@ import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 
-from app.models.board import Board, ResourceType, Tile, PortType
+from app.models.board import Board, ResourceType, PortType
 from app.models.player import Player, PlayerColor
 from app.models.hex_lib import Edge, Vertex, Hex
 
 class TurnPhase(str, Enum):
     SETUP = "setup"
     ROLL_DICE = "roll_dice"
+    DISCARD = "discard"
+    MOVE_ROBBER = "move_robber"
+    STEAL = "steal"
     MAIN_PHASE = "main_phase"
 
 class BuildingType(str, Enum):
     SETTLEMENT = "settlement"
     CITY = "city"
+
+ROAD_COST = {ResourceType.WOOD: 1, ResourceType.BRICK: 1}
+SETTLEMENT_COST = {
+    ResourceType.WOOD: 1, ResourceType.BRICK: 1,
+    ResourceType.WHEAT: 1, ResourceType.SHEEP: 1
+}
+CITY_COST = {ResourceType.ORE: 3, ResourceType.WHEAT: 2}
+
+MAX_ROADS = 15
+MAX_SETTLEMENTS = 5
+MAX_CITIES = 4
+
+VICTORY_POINTS_TO_WIN = 10
+LONGEST_ROAD_MIN_LENGTH = 5
+LONGEST_ROAD_POINTS = 2
+DISCARD_LIMIT = 7
+LOG_SIZE = 40
+
+TRADABLE_RESOURCES = [r for r in ResourceType if r != ResourceType.DESERT]
+
+PHASE_ERRORS = {
+    TurnPhase.SETUP: "Finish the setup phase first.",
+    TurnPhase.ROLL_DICE: "You must roll the dice first.",
+    TurnPhase.DISCARD: "Waiting for players to discard.",
+    TurnPhase.MOVE_ROBBER: "You must move the robber first.",
+    TurnPhase.STEAL: "You must choose a player to steal from.",
+    TurnPhase.MAIN_PHASE: "You have already rolled the dice.",
+}
 
 @dataclass
 class Building:
@@ -38,12 +69,22 @@ class GameState:
     setup_queue: List[int] = field(default_factory=list)
     # If true, the current player in setup must place a road. If false, they must place a settlement.
     setup_waiting_for_road: bool = False
+    # The settlement just placed in setup: the road of this setup turn must touch it.
+    setup_last_vertex: Optional[Vertex] = None
     
     # Robber position (initially should be on Desert)
     robber_hex: Optional[Hex] = None 
 
+    # Cards each player still has to give up after a 7
+    pending_discards: Dict[PlayerColor, int] = field(default_factory=dict)
+
+    longest_road_holder: Optional[PlayerColor] = None
+    road_lengths: Dict[PlayerColor, int] = field(default_factory=dict)
+
     is_game_over: bool = False
     winner: Optional[Player] = None
+
+    log: List[str] = field(default_factory=list)
     
     # State of the board
     roads: Dict[Edge, PlayerColor] = field(default_factory=dict)
@@ -83,55 +124,70 @@ class GameState:
     def get_current_player(self) -> Player:
         return self.players[self.current_turn_index]
 
+    def get_player_by_color(self, color: PlayerColor) -> Player:
+        return next(p for p in self.players if p.color == color)
+
+    def end_turn(self, player: Player):
+        """A player's request to finish their turn; only legal after rolling."""
+        self._verify_turn(player)
+        self.next_turn()
+        if not self.is_game_over:
+            self._log(f"{self.get_current_player().name}'s turn.")
+
     def next_turn(self):
         self._check_victory()
         if self.is_game_over:
             return
 
         if self.turn_phase == TurnPhase.SETUP:
-            # Logic for advancing through the snake draft
-            if not self.setup_queue:
-                # Setup is done, switch to normal game
-                self.turn_phase = TurnPhase.ROLL_DICE
-                self.current_turn_index = 0
-                return
-
             # Remove the turn we just finished
             self.setup_queue.pop(0)
+            self.setup_waiting_for_road = False
+            self.setup_last_vertex = None
 
             if not self.setup_queue:
                 # End of Setup
                 self.turn_phase = TurnPhase.ROLL_DICE
                 self.current_turn_index = 0
                 self.dice_roll = None
-                self.setup_waiting_for_road = False
             else:
                 # Next setup turn
                 self.current_turn_index = self.setup_queue[0]
-                self.setup_waiting_for_road = False # Next player starts with a settlement
         else:
             # Normal Game Loop
             self.current_turn_index = (self.current_turn_index + 1) % len(self.players)
             self.dice_roll = None
             self.turn_phase = TurnPhase.ROLL_DICE
+            # Points gained outside of one's turn (Longest Road) only win on one's own turn
+            self._check_victory()
 
-    def roll_dice(self) -> int:
+    def roll_dice(self, player: Optional[Player] = None) -> int:
+        self._verify_active()
+        player = player or self.get_current_player()
+        if not self._is_current(player):
+            raise ValueError("It is not your turn.")
         if self.turn_phase != TurnPhase.ROLL_DICE:
             raise ValueError("Cannot roll dice in this phase.")
 
         d1 = random.randint(1, 6)
         d2 = random.randint(1, 6)
         self.dice_roll = d1 + d2
-        
-        self.turn_phase = TurnPhase.MAIN_PHASE
+        self._log(f"{player.name} rolled {self.dice_roll}.")
 
         if self.dice_roll == 7:
-            # Phase 1: Just wait for move_robber
-            pass
+            self._start_robber_sequence()
         else:
+            self.turn_phase = TurnPhase.MAIN_PHASE
             self.distribute_resources(self.dice_roll)
         
         return self.dice_roll
+
+    def _start_robber_sequence(self):
+        self.pending_discards = {
+            p.color: p.card_count() // 2
+            for p in self.players if p.card_count() > DISCARD_LIMIT
+        }
+        self.turn_phase = TurnPhase.DISCARD if self.pending_discards else TurnPhase.MOVE_ROBBER
 
     def distribute_resources(self, roll_number: int):
         matching_tiles = [t for t in self.board.tiles.values() if t.number == roll_number]
@@ -156,39 +212,70 @@ class GameState:
                         amount = 2 if building.type == BuildingType.CITY else 1
                         player.add_resource(tile.resource, amount)
 
+    def discard(self, player: Player, cards: Dict[ResourceType, int]):
+        self._verify_active()
+        if self.turn_phase != TurnPhase.DISCARD:
+            raise ValueError("There is nothing to discard right now.")
+
+        required = self.pending_discards.get(player.color, 0)
+        if required == 0:
+            raise ValueError("You do not have to discard.")
+        if any(amount < 0 for amount in cards.values()):
+            raise ValueError("Cannot discard a negative amount of cards.")
+        if sum(cards.values()) != required:
+            raise ValueError(f"You must discard exactly {required} cards.")
+        if not player.has_resources(cards):
+            raise ValueError("You do not have those cards.")
+
+        player.deduct_resources(cards)
+        del self.pending_discards[player.color]
+        self._log(f"{player.name} discarded {required} cards.")
+
+        if not self.pending_discards:
+            self.turn_phase = TurnPhase.MOVE_ROBBER
+
     def move_robber(self, player: Player, target_hex: Hex):
-        self._verify_turn(player)
+        self._verify_turn(player, TurnPhase.MOVE_ROBBER)
         if target_hex == self.robber_hex:
              raise ValueError("Robber must be moved to a new location.")
         if target_hex not in self.board.tiles:
             raise ValueError("Invalid hex coordinates.")
         
         self.robber_hex = target_hex
+        self._log(f"{player.name} moved the robber.")
+        self.turn_phase = TurnPhase.STEAL if self.steal_victims(player) else TurnPhase.MAIN_PHASE
+
+    def steal_victims(self, thief: Player) -> List[Player]:
+        """Opponents with cards and a building on the robber hex."""
+        if self.robber_hex is None:
+            return []
+        return [
+            p for p in self.players
+            if p.color != thief.color and p.card_count() > 0 and self._has_building_on_robber(p)
+        ]
+
+    def _has_building_on_robber(self, player: Player) -> bool:
+        robber_vertices = [Vertex(self.robber_hex, d).get_canonical() for d in range(6)]
+        return any(
+            v in self.settlements and self.settlements[v].owner == player.color
+            for v in robber_vertices
+        )
 
     def steal_resource(self, thief: Player, victim: Player):
-        self._verify_turn(thief)
+        self._verify_turn(thief, TurnPhase.STEAL)
         
         if self.robber_hex is None:
             raise ValueError("Robber is not placed on the board.")
         
-        if thief == victim:
+        if thief.color == victim.color:
             raise ValueError("Cannot steal from yourself.")
 
         # 1. Validate geometric proximity to Robber
-        robber_vertices = [Vertex(self.robber_hex, d).get_canonical() for d in range(6)]
-        
-        has_building = False
-        for v in robber_vertices:
-            if v in self.settlements and self.settlements[v].owner == victim.color:
-                has_building = True
-                break
-        
-        if not has_building:
+        if not self._has_building_on_robber(victim):
             raise ValueError("Victim has no building on the robber hex.")
 
         # 2. Execute Steal
-        total_res_count = sum(victim.resources.values())
-        if total_res_count == 0:
+        if victim.card_count() == 0:
             raise ValueError("Victim has no resources to steal.")
 
         pool = []
@@ -199,6 +286,8 @@ class GameState:
         
         victim.remove_resource(stolen_res, 1)
         thief.add_resource(stolen_res, 1)
+        self._log(f"{thief.name} stole a card from {victim.name}.")
+        self.turn_phase = TurnPhase.MAIN_PHASE
         
         return stolen_res
 
@@ -209,8 +298,10 @@ class GameState:
         Handles placement of a road.
         In SETUP phase, checks for 'setup_waiting_for_road' state.
         """
+        self._verify_active()
         # Phase Check
         if self.turn_phase == TurnPhase.SETUP:
+            self._verify_setup_player(player)
             if not self.setup_waiting_for_road:
                 raise ValueError("You must place a settlement first in the setup phase.")
             free = True # Force free in setup
@@ -218,34 +309,49 @@ class GameState:
             self._verify_turn(player)
 
         canonical_edge = edge.get_canonical()
+        self._verify_road_location(player, canonical_edge)
 
-        if canonical_edge in self.roads:
-            raise ValueError("This edge is already occupied.")
-
-        road_cost = {ResourceType.WOOD: 1, ResourceType.BRICK: 1}
-        if not free and not player.has_resources(road_cost):
+        if not free and not player.has_resources(ROAD_COST):
             raise ValueError("Insufficient resources for a road.")
 
-        if not self._has_road_connectivity(player, canonical_edge):
-             raise ValueError("Road must be connected to your existing network.")
-
         if not free:
-            player.deduct_resources(road_cost)
+            player.deduct_resources(ROAD_COST)
         
         self.roads[canonical_edge] = player.color
-        self._check_longest_road(player)
+        self._update_longest_road()
 
         # Logic for auto-ending turn in SETUP phase after road is placed
         if self.turn_phase == TurnPhase.SETUP:
             self.next_turn()
+        else:
+            self._check_victory()
+
+    def _verify_road_location(self, player: Player, canonical_edge: Edge):
+        if not self.board.is_on_board(canonical_edge):
+            raise ValueError("This edge is not on the board.")
+
+        if canonical_edge in self.roads:
+            raise ValueError("This edge is already occupied.")
+
+        if self._count_roads(player) >= MAX_ROADS:
+            raise ValueError(f"You have no roads left (limit {MAX_ROADS}).")
+
+        if self.turn_phase == TurnPhase.SETUP and self.setup_waiting_for_road:
+            if self.setup_last_vertex not in canonical_edge.get_vertices():
+                raise ValueError("The road must touch the settlement you just placed.")
+
+        if not self._has_road_connectivity(player, canonical_edge):
+             raise ValueError("Road must be connected to your existing network.")
 
     def place_settlement(self, player: Player, vertex: Vertex, free: bool = False):
         """
         Handles placement of a settlement.
         In SETUP phase, ensures player isn't supposed to be placing a road.
         """
+        self._verify_active()
         # Phase Check
         if self.turn_phase == TurnPhase.SETUP:
+            self._verify_setup_player(player)
             if self.setup_waiting_for_road:
                 raise ValueError("You must place a road to finish your setup turn.")
             free = True
@@ -253,29 +359,13 @@ class GameState:
             self._verify_turn(player)
 
         canonical_vertex = vertex.get_canonical()
+        self._verify_settlement_location(player, canonical_vertex, free)
 
-        if canonical_vertex in self.settlements:
-            raise ValueError("This intersection is already occupied.")
-
-        neighbors = canonical_vertex.get_adjacent_vertices()
-        for n in neighbors:
-            if n in self.settlements:
-                raise ValueError("Distance Rule: Cannot build next to another settlement.")
-
-        if not free:
-            if not self._has_settlement_connectivity(player, canonical_vertex):
-                 raise ValueError("Settlement must be connected to your road.")
-
-        settlement_cost = {
-            ResourceType.WOOD: 1, ResourceType.BRICK: 1,
-            ResourceType.WHEAT: 1, ResourceType.SHEEP: 1
-        }
-        
-        if not free and not player.has_resources(settlement_cost):
+        if not free and not player.has_resources(SETTLEMENT_COST):
             raise ValueError("Insufficient resources for a settlement.")
 
         if not free:
-            player.deduct_resources(settlement_cost)
+            player.deduct_resources(SETTLEMENT_COST)
         
         self.settlements[canonical_vertex] = Building(player.color, BuildingType.SETTLEMENT)
         player.victory_points += 1
@@ -290,8 +380,30 @@ class GameState:
             
             # Now wait for road
             self.setup_waiting_for_road = True
+            self.setup_last_vertex = canonical_vertex
 
+        # A new settlement may cut an opponent's road in two
+        self._update_longest_road()
         self._check_victory()
+
+    def _verify_settlement_location(self, player: Player, canonical_vertex: Vertex, free: bool):
+        if not self.board.is_on_board(canonical_vertex):
+            raise ValueError("This intersection is not on the board.")
+
+        if canonical_vertex in self.settlements:
+            raise ValueError("This intersection is already occupied.")
+
+        neighbors = canonical_vertex.get_adjacent_vertices()
+        for n in neighbors:
+            if n in self.settlements:
+                raise ValueError("Distance Rule: Cannot build next to another settlement.")
+
+        if self._count_buildings(player, BuildingType.SETTLEMENT) >= MAX_SETTLEMENTS:
+            raise ValueError(f"You have no settlements left (limit {MAX_SETTLEMENTS}).")
+
+        if not free:
+            if not self._has_settlement_connectivity(player, canonical_vertex):
+                 raise ValueError("Settlement must be connected to your road.")
 
     def upgrade_to_city(self, player: Player, vertex: Vertex):
         self._verify_turn(player)
@@ -304,26 +416,21 @@ class GameState:
             raise ValueError("You can only upgrade your own settlements.")
         if building.type == BuildingType.CITY:
             raise ValueError("This is already a city.")
+        if self._count_buildings(player, BuildingType.CITY) >= MAX_CITIES:
+            raise ValueError(f"You have no cities left (limit {MAX_CITIES}).")
 
-        city_cost = {ResourceType.ORE: 3, ResourceType.WHEAT: 2}
-        if not player.has_resources(city_cost):
+        if not player.has_resources(CITY_COST):
              raise ValueError("Insufficient resources for a city.")
 
-        player.deduct_resources(city_cost)
+        player.deduct_resources(CITY_COST)
         building.type = BuildingType.CITY
         player.victory_points += 1 
         self._check_victory()
 
-    def trade_with_bank(self, player: Player, give: ResourceType, get: ResourceType):
-        self._verify_turn(player)
-        
-        cost = 4
-        
+    def trade_rate(self, player: Player, give: ResourceType) -> int:
+        """How many cards of `give` the bank wants for one card, given the player's ports."""
         player_ports = self._get_player_ports(player)
-        
-        if PortType.GENERIC_3_1 in player_ports:
-            cost = 3
-            
+
         special_port_map = {
             ResourceType.WOOD: PortType.WOOD_2_1,
             ResourceType.BRICK: PortType.BRICK_2_1,
@@ -331,90 +438,200 @@ class GameState:
             ResourceType.WHEAT: PortType.WHEAT_2_1,
             ResourceType.ORE: PortType.ORE_2_1
         }
-        
+
         if special_port_map.get(give) in player_ports:
-            cost = 2
+            return 2
+        if PortType.GENERIC_3_1 in player_ports:
+            return 3
+        return 4
+
+    def trade_with_bank(self, player: Player, give: ResourceType, get: ResourceType):
+        self._verify_turn(player)
+
+        if give not in TRADABLE_RESOURCES or get not in TRADABLE_RESOURCES:
+            raise ValueError("That resource cannot be traded.")
+        if give == get:
+            raise ValueError("You must trade for a different resource.")
+
+        cost = self.trade_rate(player, give)
             
         if player.resources[give] < cost:
-            raise ValueError(f"Not enough {give}. Need {cost} (Rate {cost}:1).")
+            raise ValueError(f"Not enough {give.value}. Need {cost} (Rate {cost}:1).")
         
         player.remove_resource(give, cost)
         player.add_resource(get, 1)
+        self._log(f"{player.name} traded {cost} {give.value} for 1 {get.value}.")
+
+    # --- Legal Moves ---
+
+    def legal_settlements(self, player: Player) -> List[Vertex]:
+        if self.is_game_over or not self._is_current(player):
+            return []
+        if self.turn_phase == TurnPhase.SETUP:
+            if self.setup_waiting_for_road:
+                return []
+            free = True
+        elif self.turn_phase == TurnPhase.MAIN_PHASE:
+            if not player.has_resources(SETTLEMENT_COST):
+                return []
+            free = False
+        else:
+            return []
+        return [
+            v for v in self.board.vertices()
+            if self._passes(self._verify_settlement_location, player, v, free)
+        ]
+
+    def legal_roads(self, player: Player) -> List[Edge]:
+        if self.is_game_over or not self._is_current(player):
+            return []
+        if self.turn_phase == TurnPhase.SETUP:
+            if not self.setup_waiting_for_road:
+                return []
+        elif self.turn_phase != TurnPhase.MAIN_PHASE or not player.has_resources(ROAD_COST):
+            return []
+        return [
+            e for e in self.board.edges()
+            if self._passes(self._verify_road_location, player, e)
+        ]
+
+    def legal_cities(self, player: Player) -> List[Vertex]:
+        if (
+            self.is_game_over or not self._is_current(player)
+            or self.turn_phase != TurnPhase.MAIN_PHASE
+            or not player.has_resources(CITY_COST)
+            or self._count_buildings(player, BuildingType.CITY) >= MAX_CITIES
+        ):
+            return []
+        return [
+            v for v, b in self.settlements.items()
+            if b.owner == player.color and b.type == BuildingType.SETTLEMENT
+        ]
+
+    def legal_robber_hexes(self, player: Player) -> List[Hex]:
+        if self.is_game_over or not self._is_current(player) or self.turn_phase != TurnPhase.MOVE_ROBBER:
+            return []
+        return [h for h in self.board.tiles if h != self.robber_hex]
+
+    @staticmethod
+    def _passes(check, *args) -> bool:
+        try:
+            check(*args)
+            return True
+        except ValueError:
+            return False
 
     # --- Helpers ---
 
-    def _verify_turn(self, player: Player):
-        if player != self.get_current_player():
+    def _log(self, message: str):
+        self.log = (self.log + [message])[-LOG_SIZE:]
+
+    def _is_current(self, player: Player) -> bool:
+        return player.color == self.get_current_player().color
+
+    def _verify_active(self):
+        if self.is_game_over:
+            raise ValueError("The game is over.")
+
+    def _verify_setup_player(self, player: Player):
+        if not self._is_current(player):
             raise ValueError("It is not your turn.")
-        if self.turn_phase == TurnPhase.ROLL_DICE:
-             raise ValueError("You must roll the dice first.")
+
+    def _verify_turn(self, player: Player, phase: TurnPhase = TurnPhase.MAIN_PHASE):
+        self._verify_active()
+        if not self._is_current(player):
+            raise ValueError("It is not your turn.")
+        if self.turn_phase != phase:
+            raise ValueError(PHASE_ERRORS[self.turn_phase])
 
     def _check_victory(self):
         p = self.get_current_player()
-        if p.victory_points >= 10:
+        if not self.is_game_over and p.victory_points >= VICTORY_POINTS_TO_WIN:
             self.is_game_over = True
             self.winner = p
+            self._log(f"{p.name} won the game!")
 
-    def _check_longest_road(self, player: Player):
+    def _count_roads(self, player: Player) -> int:
+        return sum(1 for color in self.roads.values() if color == player.color)
+
+    def _count_buildings(self, player: Player, building_type: BuildingType) -> int:
+        return sum(
+            1 for b in self.settlements.values()
+            if b.owner == player.color and b.type == building_type
+        )
+
+    def _update_longest_road(self):
+        """
+        Reassigns the Longest Road award (5+ segments, worth 2 points).
+        The holder keeps it on a tie; if a broken road leaves several other
+        players tied for first, the award is set aside until one of them leads.
+        """
+        self.road_lengths = {p.color: self._check_longest_road(p) for p in self.players}
+        best = max(self.road_lengths.values())
+        holder = self.longest_road_holder
+
+        if best < LONGEST_ROAD_MIN_LENGTH:
+            new_holder = None
+        elif holder is not None and self.road_lengths[holder] == best:
+            new_holder = holder
+        else:
+            leaders = [color for color, length in self.road_lengths.items() if length == best]
+            new_holder = leaders[0] if len(leaders) == 1 else None
+
+        if new_holder == holder:
+            return
+        if holder is not None:
+            self.get_player_by_color(holder).victory_points -= LONGEST_ROAD_POINTS
+        if new_holder is not None:
+            new_owner = self.get_player_by_color(new_holder)
+            new_owner.victory_points += LONGEST_ROAD_POINTS
+            self._log(f"{new_owner.name} has the Longest Road ({best}).")
+        self.longest_road_holder = new_holder
+
+    def _check_longest_road(self, player: Player) -> int:
         player_edges = [e for e, color in self.roads.items() if color == player.color]
-        
-        if not player_edges:
-            return 0
 
         max_length = 0
-        
+
         for start_edge in player_edges:
-            length = 1 + self._dfs_longest_road(start_edge, player.color, set([start_edge]))
-            if length > max_length:
-                max_length = length
-                
+            for start_vertex in start_edge.get_vertices():
+                length = self._longest_path_from(start_vertex, player.color, frozenset())
+                if length > max_length:
+                    max_length = length
+
         return max_length
 
-    def _dfs_longest_road(self, current_edge: Edge, color: PlayerColor, visited: Set[Edge]) -> int:
-        max_depth = 0
-        
-        vertices = current_edge.get_vertices()
-        
-        for v in vertices:
-            building = self.settlements.get(v)
-            if building and building.owner != color:
+    def _longest_path_from(self, vertex: Vertex, color: PlayerColor, used: frozenset) -> int:
+        """Longest simple trail leaving `vertex`; an opponent's building stops it."""
+        building = self.settlements.get(vertex)
+        if used and building and building.owner != color:
+            return 0
+
+        best = 0
+        for edge in vertex.get_touching_edges():
+            if self.roads.get(edge) != color or edge in used:
                 continue
-            
-            connected_edges = v.get_touching_edges()
-            
-            for next_edge in connected_edges:
-                canon_next = next_edge.get_canonical()
-                
-                if canon_next == current_edge:
-                    continue
-                    
-                if self.roads.get(canon_next) == color and canon_next not in visited:
-                    new_visited = visited.copy()
-                    new_visited.add(canon_next)
-                    
-                    depth = 1 + self._dfs_longest_road(canon_next, color, new_visited)
-                    if depth > max_depth:
-                        max_depth = depth
-                        
-        return max_depth
+            first, second = edge.get_vertices()
+            other = second if first == vertex else first
+            best = max(best, 1 + self._longest_path_from(other, color, used | {edge}))
+        return best
 
     def _has_road_connectivity(self, player: Player, edge: Edge) -> bool:
         """
         Check if road is connected to own settlement OR own road.
+        An opponent's building on a vertex blocks the connection through it.
         """
-        # 1. Check direct connection to own roads
-        connected_edges = edge.get_connected_edges()
-        for e in connected_edges:
-            if self.roads.get(e) == player.color:
-                return True
-        
-        # 2. Check connection to own settlements (at either end)
-        vertices = edge.get_vertices()
-        for v in vertices:
-            building = self.settlements.get(v.get_canonical())
-            if building and building.owner == player.color:
-                return True
-        
+        for v in edge.get_vertices():
+            building = self.settlements.get(v)
+            if building:
+                if building.owner == player.color:
+                    return True
+                continue
+
+            for touching in v.get_touching_edges():
+                if touching != edge and self.roads.get(touching) == player.color:
+                    return True
+
         return False
 
     def _has_settlement_connectivity(self, player: Player, vertex: Vertex) -> bool:

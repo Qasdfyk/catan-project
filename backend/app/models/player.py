@@ -23,7 +23,7 @@ class Player:
     resources: Counter = field(default_factory=Counter)
     victory_points: int = 0
     
-    # Will be used later for authentication
+    # Secret session token of the seat; never sent to other players
     id: str = field(default="") 
 
     def add_resource(self, resource: ResourceType, amount: int = 1):
@@ -38,6 +38,9 @@ class Player:
         if self.resources[resource] < amount:
             raise ValueError(f"Not enough {resource}. Has {self.resources[resource]}, needs {amount}.")
         self.resources[resource] -= amount
+
+    def card_count(self) -> int:
+        return sum(self.resources.values())
 
     def has_resources(self, cost: Dict[ResourceType, int]) -> bool:
         """

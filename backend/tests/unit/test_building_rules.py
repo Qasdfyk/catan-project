@@ -66,7 +66,7 @@ class TestBuildingRules:
         
         assert game.roads[e_connected.get_canonical()] == PlayerColor.RED
 
-        e_far = Edge(Hex(5, -5, 0), 0)
+        e_far = Edge(Hex(-2, 2, 0), 3)
         with pytest.raises(ValueError, match="must be connected"):
             game.place_road(alice, e_far, free=True)
 
