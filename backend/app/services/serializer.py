@@ -1,5 +1,5 @@
 from typing import Dict, Any, List
-from app.models.game import GameState, Building, TurnPhase, BuildingType
+from app.models.game import GameState, Building, TradeOffer, TurnPhase, BuildingType
 from app.models.board import Board, Tile, ResourceType, Port, PortType
 from app.models.player import DevCard, Player, PlayerColor
 from app.models.hex_lib import Hex, Vertex, Edge
@@ -23,6 +23,7 @@ class GameSerializer:
             "road_lengths": {c.value: n for c, n in game.road_lengths.items()},
             "log": game.log,
             
+            "trade_offer": GameSerializer._offer_to_dict(game.trade_offer) if game.trade_offer else None,
             "return_phase": game.return_phase.value,
             "free_roads_left": game.free_roads_left,
             "dev_deck": [c.value for c in game.dev_deck],
@@ -65,6 +66,7 @@ class GameSerializer:
             road_lengths={PlayerColor(c): n for c, n in data.get("road_lengths", {}).items()},
             log=data.get("log", []),
             
+            trade_offer=GameSerializer._dict_to_offer(data["trade_offer"]) if data.get("trade_offer") else None,
             return_phase=TurnPhase(data.get("return_phase", TurnPhase.MAIN_PHASE)),
             free_roads_left=data.get("free_roads_left", 0),
             dev_deck=[DevCard(c) for c in data.get("dev_deck", [])],
@@ -79,6 +81,26 @@ class GameSerializer:
             game.winner = next((p for p in players if p.name == data["winner_name"]), None)
 
         return game
+
+    @staticmethod
+    def _offer_to_dict(offer: TradeOffer) -> Dict[str, Any]:
+        return {
+            "proposer": offer.proposer.value,
+            "give": {r.value: n for r, n in offer.give.items()},
+            "get": {r.value: n for r, n in offer.get.items()},
+            "accepted": [c.value for c in offer.accepted],
+            "declined": [c.value for c in offer.declined],
+        }
+
+    @staticmethod
+    def _dict_to_offer(d: Dict[str, Any]) -> TradeOffer:
+        return TradeOffer(
+            proposer=PlayerColor(d["proposer"]),
+            give={ResourceType(r): n for r, n in d["give"].items()},
+            get={ResourceType(r): n for r, n in d["get"].items()},
+            accepted=[PlayerColor(c) for c in d["accepted"]],
+            declined=[PlayerColor(c) for c in d["declined"]],
+        )
 
     @staticmethod
     def _hex_to_dict(h: Hex) -> Dict[str, int]:

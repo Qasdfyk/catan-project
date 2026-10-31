@@ -30,6 +30,18 @@ def play_dev_card(game: GameState, player, rng: random.Random) -> bool:
     return True
 
 
+def try_player_trade(game: GameState, player, rng: random.Random) -> bool:
+    mine = [r for r in TRADABLE_RESOURCES if player.resources[r] > 0]
+    partner = rng.choice([p for p in game.players if p.color != player.color])
+    theirs = [r for r in TRADABLE_RESOURCES if partner.resources[r] > 0 and r not in mine]
+    if not mine or not theirs:
+        return False
+    game.offer_trade(player, {rng.choice(mine): 1}, {rng.choice(theirs): 1})
+    game.respond_to_trade(partner, True)
+    game.confirm_trade(player, partner)
+    return True
+
+
 def play_step(game: GameState, rng: random.Random):
     """Performs one random legal action, preferring ones that score points."""
     if game.turn_phase == TurnPhase.DISCARD:
@@ -61,6 +73,8 @@ def play_step(game: GameState, rng: random.Random):
         else:
             game.place_settlement(player, rng.choice(game.legal_settlements(player)))
     else:
+        if rng.random() < 0.1 and try_player_trade(game, player, rng):
+            return
         if game.can_buy_dev_card(player) and rng.random() < 0.5:
             game.buy_dev_card(player)
         elif cities := game.legal_cities(player):

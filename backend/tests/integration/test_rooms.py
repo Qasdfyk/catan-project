@@ -7,7 +7,7 @@ import pytest_asyncio
 
 from app.core.config import settings
 from app.main import app
-from app.services.redis_service import EVENTS_CHANNEL, RedisService
+from app.services.redis_service import ACTIVE_BOTS_KEY, BOTS_CHANNEL, EVENTS_CHANNEL, RedisService
 from app.services.room_service import RoomService
 
 HEADERS = {"X-Internal-Key": settings.INTERNAL_API_KEY}
@@ -298,3 +298,96 @@ async def test_rejected_action_changes_nothing(client):
     await act(client, host["room_id"], host["token"], "roll_dice")
 
     assert await session(client, host["room_id"], host["token"]) == before
+
+
+@pytest.mark.asyncio
+async def test_host_adds_and_removes_bots(client):
+    host = await create_room(client)
+
+    await act(client, host["room_id"], host["token"], "add_bot")
+    await act(client, host["room_id"], host["token"], "add_bot")
+    state = await session(client, host["room_id"], host["token"])
+    assert [p["is_bot"] for p in state["public"]["players"]] == [False, True, True]
+
+    await act(client, host["room_id"], host["token"], "remove_bot", {"seat": 2})
+
+    state = await session(client, host["room_id"], host["token"])
+    assert len(state["public"]["players"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_removing_a_bot_never_shifts_seats(client):
+    """The gateway keeps each connection's seat, so a later player must not move."""
+    host = await create_room(client)
+    await act(client, host["room_id"], host["token"], "add_bot")
+    guest = (await join(client, host["room_id"], "Bob")).json()
+
+    response = await act(client, host["room_id"], host["token"], "remove_bot", {"seat": 1})
+
+    assert response.status_code == 400
+    assert (await session(client, host["room_id"], guest["token"]))["seat"] == 2
+
+
+@pytest.mark.asyncio
+async def test_guest_cannot_add_bots(client):
+    host = await create_room(client)
+    guest = (await join(client, host["room_id"], "Bob")).json()
+
+    response = await act(client, host["room_id"], guest["token"], "add_bot")
+
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_only_bots_can_be_removed(client):
+    host = await create_room(client)
+    await join(client, host["room_id"], "Bob")
+
+    response = await act(client, host["room_id"], host["token"], "remove_bot", {"seat": 1})
+
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_bot_seat_cannot_be_taken_by_name(client):
+    host = await create_room(client)
+    await act(client, host["room_id"], host["token"], "add_bot")
+
+    response = await join(client, host["room_id"], "Ada")
+
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_starting_summons_bots_with_their_tokens(client):
+    host = await create_room(client)
+    await act(client, host["room_id"], host["token"], "add_bot")
+    redis = app.state.redis.redis
+    pubsub = redis.pubsub()
+    await pubsub.subscribe(BOTS_CHANNEL)
+    await pubsub.get_message(timeout=1)
+
+    response = await act(client, host["room_id"], host["token"], "start_game")
+
+    assert response.status_code == 200
+    message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=2)
+    await pubsub.aclose()
+    bot = json.loads(message["data"])
+    assert bot["room_id"] == host["room_id"]
+    state = await session(client, host["room_id"], bot["token"])
+    assert state["seat"] == 1
+    await redis.srem(ACTIVE_BOTS_KEY, message["data"])
+
+
+@pytest.mark.asyncio
+async def test_bot_tokens_stay_out_of_public_state(client):
+    host = await create_room(client)
+    await act(client, host["room_id"], host["token"], "add_bot")
+    await act(client, host["room_id"], host["token"], "start_game")
+    room = await app.state.redis.get_room(host["room_id"])
+    bot_token = room["seats"][1]["token"]
+
+    state = await session(client, host["room_id"], host["token"])
+
+    assert bot_token not in json.dumps(state)
+    await app.state.redis.redis.delete(ACTIVE_BOTS_KEY)

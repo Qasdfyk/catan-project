@@ -4,6 +4,8 @@ from redis.asyncio.lock import Lock
 from app.core.config import settings
 
 EVENTS_CHANNEL = "catan:events"
+BOTS_CHANNEL = "catan:bots"
+ACTIVE_BOTS_KEY = "catan:active_bots"
 ROOM_TTL_SECONDS = 24 * 3600
 
 class RedisService:
@@ -42,6 +44,12 @@ class RedisService:
 
     async def publish_event(self, event: dict):
         await self.redis.publish(EVENTS_CHANNEL, json.dumps(event))
+
+    async def summon_bot(self, room_id: str, token: str):
+        """Asks the bot service to take a seat. The set lets it recover after a restart."""
+        bot = json.dumps({"room_id": room_id, "token": token})
+        await self.redis.sadd(ACTIVE_BOTS_KEY, bot)
+        await self.redis.publish(BOTS_CHANNEL, bot)
 
     async def close(self):
         await self.redis.aclose()

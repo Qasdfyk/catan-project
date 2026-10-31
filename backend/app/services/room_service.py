@@ -15,6 +15,7 @@ from app.services.views import private_view, public_view
 
 MAX_SEATS = 4
 MIN_SEATS_TO_START = 2
+BOT_NAMES = ("Ada", "Boole", "Turing", "Lovelace")
 
 
 class RoomError(Exception):
@@ -69,6 +70,8 @@ class RoomService:
 
             seat = self._seat_by_name(room, name)
             if seat is not None:
+                if room["seats"][seat].get("bot"):
+                    raise RoomConflict("That name belongs to a bot.")
                 if seat in await self.redis.online_seats(room_id, len(room["seats"])):
                     raise RoomConflict("That name is taken by a connected player.")
                 room["seats"][seat]["token"] = token
@@ -112,6 +115,14 @@ class RoomService:
 
             if action_type == "start_game":
                 game = self._start_game(room, seat)
+                # Saved before the bots connect, which is why _commit comes first
+                await self._commit(room, game)
+                await self._summon_bots(room)
+                return
+            elif action_type == "add_bot":
+                self._add_bot(room, seat)
+            elif action_type == "remove_bot":
+                self._remove_bot(room, seat, payload.get("seat"))
             elif game is None:
                 raise RoomError("The game has not started yet.")
             else:
@@ -123,6 +134,38 @@ class RoomService:
                     room["status"] = "finished"
 
             await self._commit(room, game)
+
+    @staticmethod
+    def _verify_lobby_host(room: Dict[str, Any], seat: int):
+        if seat != room["host_seat"]:
+            raise RoomError("Only the host can change the seats.")
+        if room["status"] != "lobby":
+            raise RoomError("The game has already started.")
+
+    @classmethod
+    def _add_bot(cls, room: Dict[str, Any], seat: int):
+        cls._verify_lobby_host(room, seat)
+        if len(room["seats"]) >= MAX_SEATS:
+            raise RoomConflict("The room is full.")
+        taken = {entry["name"].casefold() for entry in room["seats"]}
+        name = next(n for n in BOT_NAMES if n.casefold() not in taken)
+        room["seats"].append({"name": name, "token": secrets.token_urlsafe(24), "bot": True})
+
+    @classmethod
+    def _remove_bot(cls, room: Dict[str, Any], seat: int, target: Any):
+        cls._verify_lobby_host(room, seat)
+        seats = room["seats"]
+        if not isinstance(target, int) or not 0 <= target < len(seats) or not seats[target].get("bot"):
+            raise RoomError("That seat has no bot.")
+        # Seats must not shift: the gateway routes private state by seat number
+        if target != len(seats) - 1:
+            raise RoomError("Only the last seat can be freed.")
+        seats.pop()
+
+    async def _summon_bots(self, room: Dict[str, Any]):
+        for entry in room["seats"]:
+            if entry.get("bot"):
+                await self.redis.summon_bot(room["room_id"], entry["token"])
 
     @staticmethod
     def _start_game(room: Dict[str, Any], seat: int) -> GameState:

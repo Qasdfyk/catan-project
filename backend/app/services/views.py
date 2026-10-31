@@ -27,6 +27,20 @@ def _hex(h: Hex) -> Dict[str, int]:
     return GameSerializer._hex_to_dict(h)
 
 
+def _offer(game: GameState) -> Optional[Dict[str, Any]]:
+    offer = game.trade_offer
+    if offer is None:
+        return None
+    seat_of = {player.color: seat for seat, player in enumerate(game.players)}
+    return {
+        "proposer_seat": seat_of[offer.proposer],
+        "give": {r.value: n for r, n in offer.give.items()},
+        "get": {r.value: n for r, n in offer.get.items()},
+        "accepted_seats": [seat_of[c] for c in offer.accepted],
+        "declined_seats": [seat_of[c] for c in offer.declined],
+    }
+
+
 def public_view(room: Dict[str, Any], game: Optional[GameState]) -> Dict[str, Any]:
     view: Dict[str, Any] = {
         "room_id": room["room_id"],
@@ -37,7 +51,7 @@ def public_view(room: Dict[str, Any], game: Optional[GameState]) -> Dict[str, An
 
     if game is None:
         view["players"] = [
-            {"seat": seat, "name": entry["name"]}
+            {"seat": seat, "name": entry["name"], "is_bot": entry.get("bot", False)}
             for seat, entry in enumerate(room["seats"])
         ]
         view["game"] = None
@@ -48,6 +62,7 @@ def public_view(room: Dict[str, Any], game: Optional[GameState]) -> Dict[str, An
         {
             "seat": seat,
             "name": player.name,
+            "is_bot": room["seats"][seat].get("bot", False),
             "color": player.color.value,
             "victory_points": player.victory_points,
             "card_count": player.card_count(),
@@ -64,6 +79,7 @@ def public_view(room: Dict[str, Any], game: Optional[GameState]) -> Dict[str, An
         "winner_seat": game.players.index(game.winner) if game.winner else None,
         "bank": {r.value: game.bank_count(r) for r in TRADABLE_RESOURCES},
         "dev_deck_count": len(game.dev_deck),
+        "trade_offer": _offer(game),
     }
     return view
 

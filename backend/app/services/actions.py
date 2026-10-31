@@ -54,7 +54,7 @@ def _parse_cards(data: Any) -> Dict[ResourceType, int]:
     return cards
 
 
-def _parse_victim(game: GameState, data: Any) -> Player:
+def _parse_seat(game: GameState, data: Any) -> Player:
     if not _is_int(data) or not 0 <= data < len(game.players):
         raise ValueError("Unknown player.")
     return game.players[data]
@@ -68,7 +68,13 @@ ACTIONS: Dict[str, Callable[[GameState, Player, Dict[str, Any]], Any]] = {
     "upgrade_city": lambda g, p, data: g.upgrade_to_city(p, _parse_vertex(data)),
     "discard": lambda g, p, data: g.discard(p, _parse_cards(data.get("cards"))),
     "move_robber": lambda g, p, data: g.move_robber(p, _parse_hex(data.get("hex"))),
-    "steal": lambda g, p, data: g.steal_resource(p, _parse_victim(g, data.get("victim_seat"))),
+    "steal": lambda g, p, data: g.steal_resource(p, _parse_seat(g, data.get("victim_seat"))),
+    "offer_trade": lambda g, p, data: g.offer_trade(
+        p, _parse_cards(data.get("give")), _parse_cards(data.get("get"))
+    ),
+    "respond_trade": lambda g, p, data: g.respond_to_trade(p, data.get("accept") is True),
+    "confirm_trade": lambda g, p, data: g.confirm_trade(p, _parse_seat(g, data.get("partner_seat"))),
+    "cancel_trade": lambda g, p, _: g.cancel_trade(p),
     "buy_dev_card": lambda g, p, _: g.buy_dev_card(p),
     "play_knight": lambda g, p, _: g.play_knight(p),
     "play_road_building": lambda g, p, _: g.play_road_building(p),

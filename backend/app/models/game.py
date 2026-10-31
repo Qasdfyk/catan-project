@@ -61,6 +61,15 @@ PHASE_ERRORS = {
 }
 
 @dataclass
+class TradeOffer:
+    """An open offer from the current player, seen by everyone."""
+    proposer: PlayerColor
+    give: Dict[ResourceType, int]
+    get: Dict[ResourceType, int]
+    accepted: List[PlayerColor] = field(default_factory=list)
+    declined: List[PlayerColor] = field(default_factory=list)
+
+@dataclass
 class Building:
     owner: PlayerColor
     type: BuildingType
@@ -93,6 +102,8 @@ class GameState:
     # Where the turn continues after the robber or free roads (a card can be played before rolling)
     return_phase: TurnPhase = TurnPhase.MAIN_PHASE
     free_roads_left: int = 0
+
+    trade_offer: Optional[TradeOffer] = None
 
     dev_deck: List[DevCard] = field(default_factory=list)
     dev_card_played: bool = False
@@ -179,6 +190,7 @@ class GameState:
                 self.current_turn_index = self.setup_queue[0]
         else:
             # Normal Game Loop
+            self.trade_offer = None
             finished = self.get_current_player()
             finished.dev_cards.extend(finished.new_dev_cards)
             finished.new_dev_cards = []
@@ -525,6 +537,65 @@ class GameState:
         player.remove_resource(give, cost)
         player.add_resource(get, 1)
         self._log(f"{player.name} traded {cost} {give.value} for 1 {get.value}.")
+
+    # --- Trade Between Players ---
+
+    def offer_trade(self, player: Player, give: Dict[ResourceType, int], get: Dict[ResourceType, int]):
+        self._verify_turn(player)
+        if not give or not get:
+            raise ValueError("A trade needs cards on both sides.")
+        if any(n <= 0 for n in (*give.values(), *get.values())):
+            raise ValueError("Cannot trade a negative amount of cards.")
+        if set(give) & set(get):
+            raise ValueError("You cannot ask for the resource you are giving.")
+        if any(r not in TRADABLE_RESOURCES for r in (*give, *get)):
+            raise ValueError("That resource cannot be traded.")
+        if not player.has_resources(give):
+            raise ValueError("You do not have those cards.")
+
+        self.trade_offer = TradeOffer(player.color, give, get)
+        self._log(f"{player.name} offers a trade.")
+
+    def respond_to_trade(self, player: Player, accept: bool):
+        self._verify_active()
+        offer = self.trade_offer
+        if offer is None:
+            raise ValueError("There is no trade offer.")
+        if player.color == offer.proposer:
+            raise ValueError("You cannot answer your own offer.")
+        if accept and not player.has_resources(offer.get):
+            raise ValueError("You do not have the cards for this trade.")
+
+        for answers in (offer.accepted, offer.declined):
+            if player.color in answers:
+                answers.remove(player.color)
+        (offer.accepted if accept else offer.declined).append(player.color)
+
+    def confirm_trade(self, player: Player, partner: Player):
+        self._verify_turn(player)
+        offer = self.trade_offer
+        if offer is None:
+            raise ValueError("There is no trade offer.")
+        if partner.color not in offer.accepted:
+            raise ValueError("That player has not accepted the offer.")
+        # The offer may be old: both hands could have changed since it was made
+        if not player.has_resources(offer.give) or not partner.has_resources(offer.get):
+            raise ValueError("The cards for this trade are no longer available.")
+
+        player.deduct_resources(offer.give)
+        partner.deduct_resources(offer.get)
+        for resource, amount in offer.give.items():
+            partner.add_resource(resource, amount)
+        for resource, amount in offer.get.items():
+            player.add_resource(resource, amount)
+        self.trade_offer = None
+        self._log(f"{player.name} traded with {partner.name}.")
+
+    def cancel_trade(self, player: Player):
+        self._verify_active()
+        if self.trade_offer is None or self.trade_offer.proposer != player.color:
+            raise ValueError("You have no open offer.")
+        self.trade_offer = None
 
     # --- Development Cards ---
 
