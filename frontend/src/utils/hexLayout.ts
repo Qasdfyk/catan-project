@@ -36,9 +36,6 @@ export const getEdgeEndpoints = ({ hex, direction }: Position): [Point, Point] =
 export const hexCorners = (hex: HexCoords): Point[] =>
     [0, 1, 2, 3, 4, 5].map((direction) => getVertexCoords({ hex, direction }));
 
-export const samePosition = (a: Position, b: Position): boolean =>
-    a.direction === b.direction && a.hex.q === b.hex.q && a.hex.r === b.hex.r;
-
 /** How many of the 36 dice combinations produce this number. */
 export const numberPips = (number: number): number => 6 - Math.abs(7 - number);
 

@@ -4,7 +4,7 @@ view goes to the whole room, the private one only to its seat.
 """
 from typing import Any, Dict, List, Optional
 
-from app.models.game import TRADABLE_RESOURCES, GameState
+from app.models.game import TRADABLE_RESOURCES, GameState, TurnPhase
 from app.models.hex_lib import Edge, Hex, Vertex
 from app.services.serializer import GameSerializer
 
@@ -85,6 +85,6 @@ def private_view(game: Optional[GameState], seat: int) -> Dict[str, Any]:
 
 
 def _steal_targets(game: GameState, seat: int) -> List[int]:
-    if game.turn_phase.value != "steal":
+    if game.turn_phase != TurnPhase.STEAL:
         return []
     return [game.players.index(p) for p in game.steal_victims(game.players[seat])]

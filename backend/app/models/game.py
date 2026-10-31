@@ -318,6 +318,7 @@ class GameState:
             player.deduct_resources(ROAD_COST)
         
         self.roads[canonical_edge] = player.color
+        self._log(f"{player.name} built a road.")
         self._update_longest_road()
 
         # Logic for auto-ending turn in SETUP phase after road is placed
@@ -369,6 +370,7 @@ class GameState:
         
         self.settlements[canonical_vertex] = Building(player.color, BuildingType.SETTLEMENT)
         player.victory_points += 1
+        self._log(f"{player.name} built a settlement.")
         
         # SETUP PHASE: Handle State Transition & Initial Resources
         if self.turn_phase == TurnPhase.SETUP:
@@ -425,6 +427,7 @@ class GameState:
         player.deduct_resources(CITY_COST)
         building.type = BuildingType.CITY
         player.victory_points += 1 
+        self._log(f"{player.name} built a city.")
         self._check_victory()
 
     def trade_rate(self, player: Player, give: ResourceType) -> int:

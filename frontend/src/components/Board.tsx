@@ -11,7 +11,7 @@ import {
 } from '../utils/hexLayout';
 import { PLAYER_COLORS } from '../utils/labels';
 
-const BOARD_EXTENT = HEX_SIZE * 5.8;
+const BOARD_EXTENT = HEX_SIZE * 5.3;
 const VIEW_BOX = `${-BOARD_EXTENT} ${-BOARD_EXTENT} ${BOARD_EXTENT * 2} ${BOARD_EXTENT * 2}`;
 
 export interface BoardTargets {

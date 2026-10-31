@@ -26,4 +26,5 @@ EXPOSE 8000
 
 # 8. START: Run uvicorn server
 # Host 0.0.0.0 is required to make the server accessible outside the container
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Room state lives in Redis, so workers can be added freely
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

@@ -3,8 +3,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: catan_redis
-    ports:
-      - "6379:6379" # Expose port to host for local testing/debugging
     volumes:
       - redis_data:/data # Persist data to a volume
     networks:
@@ -16,25 +14,55 @@ services:
       timeout: 3s
       retries: 5
 
-  # --- SERVICE 2: BACKEND ---
+  # --- SERVICE 2: BACKEND (rules, rooms) ---
   backend:
     build:
       context: ./backend  # Path to the directory containing Dockerfile
       dockerfile: Dockerfile
     container_name: catan_backend
-    ports:
-      - "8000:8000" # Map host port 8000 to container port 8000
     environment:
       - PROJECT_NAME=Catan Docker
       # IMPORTANT: Using Docker DNS. 'redis' refers to the service name defined above.
-      - REDIS_URL=redis://redis:6379/0 
+      - REDIS_URL=redis://redis:6379/0
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-dev-internal-key}
     depends_on:
       redis:
         condition: service_healthy # Wait for Redis healthcheck to pass
-    volumes:
-      # HOT RELOAD: Mount local './backend/app' to container's '/app/app'
-      # This allows code changes to reflect immediately without rebuilding.
-      - ./backend/app:/app/app
+    networks:
+      - catan_net
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # --- SERVICE 3: GATEWAY (WebSocket connections, Go) ---
+  gateway:
+    build:
+      context: ./gateway
+    container_name: catan_gateway
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - BACKEND_URL=http://backend:8000
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-dev-internal-key}
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks:
+      - catan_net
+
+  # --- SERVICE 4: FRONTEND (static files, routes /api and /ws) ---
+  frontend:
+    build:
+      context: ./frontend
+    container_name: catan_frontend
+    ports:
+      - "3000:80" # The game: http://localhost:3000
+    depends_on:
+      - backend
+      - gateway
     networks:
       - catan_net
 

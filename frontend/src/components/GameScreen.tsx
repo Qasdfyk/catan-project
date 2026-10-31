@@ -100,7 +100,7 @@ export const GameScreen = ({ state, mine, room }: GameScreenProps) => {
                         : instruction(game, current, isMyTurn, legal.must_discard)}
                 </span>
                 {game.dice_roll !== null && (
-                    <span className="dice" data-testid="dice">🎲 {game.dice_roll}</span>
+                    <span className="dice" data-testid="dice">Rolled {game.dice_roll}</span>
                 )}
                 {!room.connected && <span className="offline">Reconnecting…</span>}
             </header>
@@ -134,7 +134,7 @@ export const GameScreen = ({ state, mine, room }: GameScreenProps) => {
                                 {player.seat === mine.seat && <span className="muted"> (you)</span>}
                             </span>
                             <span className="player-stats">
-                                <span title="Cards">{player.card_count} cards</span>
+                                <span title="Cards">{player.card_count} {player.card_count === 1 ? 'card' : 'cards'}</span>
                                 <span title="Road length">
                                     road {player.road_length}
                                     {game.longest_road_holder === player.color && ' ★'}

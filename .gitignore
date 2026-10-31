@@ -18,6 +18,7 @@ npm-debug.log
 yarn-error.log
 dist/
 build/
+e2e/screenshots/
 .env.local
 .env.development.local
 .env.test.local
