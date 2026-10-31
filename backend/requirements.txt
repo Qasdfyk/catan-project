@@ -4,13 +4,8 @@ uvicorn[standard]>=0.27.0  # Serwer aplikacji (ASGI)
 pydantic>=2.6.0            # Walidacja danych
 pydantic-settings>=2.1.0   # Obsługa .env (nowa wersja)
 
-# --- Realtime (WebSockets) ---
-python-socketio>=5.11.0    # Obsługa protokołu Socket.IO
-aiohttp>=3.9.0             # WYMAGANE przez klienta Socket.IO (debug_client.py i boty)
-
 # --- Databases ---
 redis>=5.0.1               # Klient Redis (async)
-asyncpg>=0.29.0            # Klient PostgreSQL (przyda się w późniejszych fazach)
 
 # --- Testing ---
 pytest>=8.0.0

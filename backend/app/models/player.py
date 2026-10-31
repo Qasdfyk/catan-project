@@ -23,7 +23,7 @@ class Player:
     resources: Counter = field(default_factory=Counter)
     victory_points: int = 0
     
-    # Secret session token of the seat; never sent to other players
+    # Internal identifier; clients address players by seat number
     id: str = field(default="") 
 
     def add_resource(self, resource: ResourceType, amount: int = 1):
