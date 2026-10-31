@@ -6,6 +6,7 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 .env
 .pytest_cache/
 backend/code_tool.py
