@@ -4,6 +4,8 @@ from typing import Dict, List, Optional, Set
 from app.models.hex_lib import Edge, Hex, Vertex
 import random
 
+RED_NUMBERS = (6, 8)
+
 class ResourceType(str, Enum):
     """Available resource types in the game."""
     WOOD = "wood"
@@ -74,27 +76,37 @@ class Board:
         # 1x2, 2x3, 2x4, 2x5, 2x6, 2x8, 2x9, 2x10, 2x11, 1x12
         numbers = [2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12]
 
-        # 4. Shuffle resources and numbers
-        random.shuffle(resources)
-        random.shuffle(numbers)
+        # 4. Shuffle until the most productive numbers are spread over the island
+        while True:
+            random.shuffle(resources)
+            random.shuffle(numbers)
+            board.tiles = Board._assign_tiles(hexes, resources, numbers)
+            if not Board._red_numbers_touch(board):
+                break
 
-        # 5. Assign to tiles
-        # Note: In a real game, there are rules preventing 6s and 8s from touching.
-        # For this iteration, we use pure random assignment.
-        number_idx = 0
-        
-        for i, h in enumerate(hexes):
-            res = resources[i]
-            num = None
-            
-            if res != ResourceType.DESERT:
-                num = numbers[number_idx]
-                number_idx += 1
-            
-            board.tiles[h] = Tile(hex_coords=h, resource=res, number=num)
-        
         board.ports = Board._create_ports(board)
         return board
+
+    @staticmethod
+    def _assign_tiles(hexes: List[Hex], resources: List[ResourceType], numbers: List[int]) -> Dict[Hex, Tile]:
+        tiles = {}
+        remaining_numbers = iter(numbers)
+        for h, res in zip(hexes, resources):
+            num = None if res == ResourceType.DESERT else next(remaining_numbers)
+            tiles[h] = Tile(hex_coords=h, resource=res, number=num)
+        return tiles
+
+    @staticmethod
+    def _red_numbers_touch(board: 'Board') -> bool:
+        """6s and 8s are the most likely rolls, so they must not be neighbors."""
+        for h, tile in board.tiles.items():
+            if tile.number not in RED_NUMBERS:
+                continue
+            for direction in range(6):
+                neighbor = board.tiles.get(h.neighbor(direction))
+                if neighbor and neighbor.number in RED_NUMBERS:
+                    return True
+        return False
 
     def is_on_board(self, position: Vertex | Edge) -> bool:
         """A vertex or edge exists only if it touches at least one tile."""

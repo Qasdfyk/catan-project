@@ -35,6 +35,7 @@ VICTORY_POINTS_TO_WIN = 10
 LONGEST_ROAD_MIN_LENGTH = 5
 LONGEST_ROAD_POINTS = 2
 DISCARD_LIMIT = 7
+BANK_SIZE = 19
 LOG_SIZE = 40
 
 TRADABLE_RESOURCES = [r for r in ResourceType if r != ResourceType.DESERT]
@@ -189,10 +190,18 @@ class GameState:
         }
         self.turn_phase = TurnPhase.DISCARD if self.pending_discards else TurnPhase.MOVE_ROBBER
 
-    def distribute_resources(self, roll_number: int):
-        matching_tiles = [t for t in self.board.tiles.values() if t.number == roll_number]
+    def bank_count(self, resource: ResourceType) -> int:
+        """Every card is either in a hand or in the bank."""
+        held = sum(p.resources[resource] for p in self.players)
+        return max(BANK_SIZE - held, 0)
 
-        for tile in matching_tiles:
+    def distribute_resources(self, roll_number: int):
+        payouts: Dict[ResourceType, Dict[PlayerColor, int]] = {}
+
+        for tile in self.board.tiles.values():
+            if tile.number != roll_number:
+                continue
+
             # ROBBER LOGIC
             if tile.hex_coords == self.robber_hex:
                 continue
@@ -201,16 +210,26 @@ class GameState:
                 continue
 
             for direction in range(6):
-                raw_vertex = Vertex(tile.hex_coords, direction)
-                canonical_vertex = raw_vertex.get_canonical()
+                building = self.settlements.get(Vertex(tile.hex_coords, direction))
+                if building:
+                    amount = 2 if building.type == BuildingType.CITY else 1
+                    shares = payouts.setdefault(tile.resource, {})
+                    shares[building.owner] = shares.get(building.owner, 0) + amount
 
-                if canonical_vertex in self.settlements:
-                    building = self.settlements[canonical_vertex]
-                    player = next((p for p in self.players if p.color == building.owner), None)
-                    
-                    if player:
-                        amount = 2 if building.type == BuildingType.CITY else 1
-                        player.add_resource(tile.resource, amount)
+        for resource, shares in payouts.items():
+            self._pay_out(resource, shares)
+
+    def _pay_out(self, resource: ResourceType, shares: Dict[PlayerColor, int]):
+        """
+        When the bank cannot pay everyone, nobody gets that resource. A single
+        receiver still takes whatever is left.
+        """
+        available = self.bank_count(resource)
+        if sum(shares.values()) > available and len(shares) > 1:
+            self._log(f"The bank has too little {resource.value} to pay out.")
+            return
+        for color, amount in shares.items():
+            self.get_player_by_color(color).add_resource(resource, min(amount, available))
 
     def discard(self, player: Player, cards: Dict[ResourceType, int]):
         self._verify_active()
@@ -460,6 +479,8 @@ class GameState:
             
         if player.resources[give] < cost:
             raise ValueError(f"Not enough {give.value}. Need {cost} (Rate {cost}:1).")
+        if self.bank_count(get) == 0:
+            raise ValueError(f"The bank has no {get.value} left.")
         
         player.remove_resource(give, cost)
         player.add_resource(get, 1)
@@ -657,7 +678,7 @@ class GameState:
         
         for h in hexes:
             tile = self.board.get_tile(h)
-            if tile and tile.resource != ResourceType.DESERT:
+            if tile and tile.resource != ResourceType.DESERT and self.bank_count(tile.resource) > 0:
                 player.add_resource(tile.resource, 1)
 
     def _get_player_ports(self, player: Player) -> Set[PortType]:

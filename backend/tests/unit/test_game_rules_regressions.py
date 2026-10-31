@@ -525,6 +525,56 @@ class TestTrade:
             game.trade_with_bank(alice, ResourceType.ORE, ResourceType.DESERT)
 
 
+class TestBank:
+    def shared_tile(self, game, resource):
+        tile = next(t for t in game.board.tiles.values() if t.number)
+        for other in game.board.tiles.values():
+            other.number = None
+        tile.number, tile.resource = 6, resource
+        game.robber_hex = next(h for h in game.board.tiles if h != tile.hex_coords)
+        return tile
+
+    def test_bank_counts_cards_in_hands(self):
+        game = main_phase_game()
+        game.players[0].add_resource(ResourceType.ORE, 4)
+        game.players[1].add_resource(ResourceType.ORE, 3)
+
+        assert game.bank_count(ResourceType.ORE) == 12
+
+    def test_nobody_is_paid_if_the_bank_cannot_cover_all(self):
+        game = main_phase_game()
+        alice, bob = game.players
+        tile = self.shared_tile(game, ResourceType.ORE)
+        game.settlements[Vertex(tile.hex_coords, 0).get_canonical()] = Building(alice.color, BuildingType.SETTLEMENT)
+        game.settlements[Vertex(tile.hex_coords, 3).get_canonical()] = Building(bob.color, BuildingType.SETTLEMENT)
+        alice.add_resource(ResourceType.ORE, 18)
+
+        game.distribute_resources(6)
+
+        assert alice.resources[ResourceType.ORE] == 18
+        assert bob.resources[ResourceType.ORE] == 0
+
+    def test_single_receiver_takes_what_is_left(self):
+        game = main_phase_game()
+        alice, bob = game.players
+        tile = self.shared_tile(game, ResourceType.ORE)
+        game.settlements[Vertex(tile.hex_coords, 0).get_canonical()] = Building(alice.color, BuildingType.CITY)
+        bob.add_resource(ResourceType.ORE, 18)
+
+        game.distribute_resources(6)
+
+        assert alice.resources[ResourceType.ORE] == 1
+
+    def test_cannot_buy_what_the_bank_does_not_have(self):
+        game = main_phase_game()
+        alice, bob = game.players
+        alice.add_resource(ResourceType.WOOD, 4)
+        bob.add_resource(ResourceType.ORE, 19)
+
+        with pytest.raises(ValueError, match="no ore left"):
+            game.trade_with_bank(alice, ResourceType.WOOD, ResourceType.ORE)
+
+
 class TestVictory:
     def test_city_can_end_the_game(self):
         game = main_phase_game()

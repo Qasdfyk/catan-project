@@ -66,3 +66,11 @@ class TestBoardGenerator:
         far_away = Hex(10, -10, 0)
         
         assert board.get_tile(far_away) is None
+
+    def test_red_numbers_never_touch(self):
+        for _ in range(50):
+            board = Board.create_standard_game()
+            for h, tile in board.tiles.items():
+                if tile.number in (6, 8):
+                    neighbors = [board.get_tile(h.neighbor(d)) for d in range(6)]
+                    assert not any(n and n.number in (6, 8) for n in neighbors)

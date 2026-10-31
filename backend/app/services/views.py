@@ -59,6 +59,7 @@ def public_view(room: Dict[str, Any], game: Optional[GameState]) -> Dict[str, An
         **{key: data[key] for key in PUBLIC_GAME_FIELDS},
         "current_seat": game.current_turn_index,
         "winner_seat": game.players.index(game.winner) if game.winner else None,
+        "bank": {r.value: game.bank_count(r) for r in TRADABLE_RESOURCES},
     }
     return view
 
