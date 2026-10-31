@@ -192,7 +192,7 @@ label { display: grid; gap: 4px; font-size: 14px; }
     min-height: 100%;
     grid-template: 'top' auto 'board' auto 'hand' auto 'side' auto / minmax(0, 1fr);
   }
-  .board-area { aspect-ratio: 1; }
+  .board { height: auto; aspect-ratio: 1; }
   .side { border-left: 0; overflow: visible; }
   .log { flex: none; max-height: 200px; }
   .hand { gap: 4px; }
