@@ -1,5 +1,4 @@
 from typing import Dict, Any, List
-import json
 from app.models.game import GameState, Building, TurnPhase, BuildingType
 from app.models.board import Board, Tile, ResourceType, Port, PortType
 from app.models.player import Player, PlayerColor
@@ -17,12 +16,19 @@ class GameSerializer:
             
             "setup_queue": game.setup_queue,
             "setup_waiting_for_road": game.setup_waiting_for_road,
+            "setup_last_vertex": GameSerializer._vertex_to_dict(game.setup_last_vertex) if game.setup_last_vertex else None,
+            
+            "pending_discards": {c.value: n for c, n in game.pending_discards.items()},
+            "longest_road_holder": game.longest_road_holder.value if game.longest_road_holder else None,
+            "road_lengths": {c.value: n for c, n in game.road_lengths.items()},
+            "log": game.log,
             
             "robber_hex": GameSerializer._hex_to_dict(game.robber_hex) if game.robber_hex else None,
             "is_game_over": game.is_game_over,
             "winner_name": game.winner.name if game.winner else None,
             
             "board_tiles": GameSerializer._tiles_to_list(game.board.tiles),
+            "ports": GameSerializer._ports_to_list(game.board.ports),
             "roads": GameSerializer._roads_to_list(game.roads),
             "settlements": GameSerializer._settlements_to_list(game.settlements)
         }
@@ -31,6 +37,7 @@ class GameSerializer:
     def dict_to_game(data: Dict[str, Any]) -> GameState:
         board = Board()
         board.tiles = GameSerializer._list_to_tiles(data["board_tiles"])
+        board.ports = GameSerializer._list_to_ports(data["ports"])
 
         players = [GameSerializer._dict_to_player(p) for p in data["players"]]
 
@@ -44,7 +51,13 @@ class GameSerializer:
             is_game_over=data["is_game_over"],
             
             setup_queue=data.get("setup_queue", []),
-            setup_waiting_for_road=data.get("setup_waiting_for_road", False)
+            setup_waiting_for_road=data.get("setup_waiting_for_road", False),
+            setup_last_vertex=GameSerializer._dict_to_vertex(data["setup_last_vertex"]) if data.get("setup_last_vertex") else None,
+            
+            pending_discards={PlayerColor(c): n for c, n in data.get("pending_discards", {}).items()},
+            longest_road_holder=PlayerColor(data["longest_road_holder"]) if data.get("longest_road_holder") else None,
+            road_lengths={PlayerColor(c): n for c, n in data.get("road_lengths", {}).items()},
+            log=data.get("log", [])
         )
         
         game.roads = GameSerializer._list_to_roads(data["roads"])
@@ -62,6 +75,14 @@ class GameSerializer:
     @staticmethod
     def _dict_to_hex(d: Dict[str, int]) -> Hex:
         return Hex(q=d['q'], r=d['r'], s=d['s'])
+
+    @staticmethod
+    def _vertex_to_dict(v: Vertex) -> Dict[str, Any]:
+        return {"hex": GameSerializer._hex_to_dict(v.owner), "direction": v.direction}
+
+    @staticmethod
+    def _dict_to_vertex(d: Dict[str, Any]) -> Vertex:
+        return Vertex(GameSerializer._dict_to_hex(d["hex"]), d["direction"]).get_canonical()
 
     @staticmethod
     def _player_to_dict(p: Player) -> Dict[str, Any]:
@@ -103,6 +124,26 @@ class GameSerializer:
                 number=item["number"]
             )
         return result
+
+    @staticmethod
+    def _ports_to_list(ports: List[Port]) -> List[Dict]:
+        return [
+            {
+                "type": port.type.value,
+                "vertices": [GameSerializer._vertex_to_dict(v) for v in port.valid_vertices]
+            }
+            for port in ports
+        ]
+
+    @staticmethod
+    def _list_to_ports(data: List[Dict]) -> List[Port]:
+        return [
+            Port(
+                type=PortType(item["type"]),
+                valid_vertices=[GameSerializer._dict_to_vertex(v) for v in item["vertices"]]
+            )
+            for item in data
+        ]
 
     @staticmethod
     def _roads_to_list(roads: Dict[Edge, PlayerColor]) -> List[Dict]:

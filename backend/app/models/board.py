@@ -1,10 +1,8 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional
-from app.models.hex_lib import Hex, Vertex
+from typing import Dict, List, Optional, Set
+from app.models.hex_lib import Edge, Hex, Vertex
 import random
-
-from app.models.hex_lib import Hex
 
 class ResourceType(str, Enum):
     """Available resource types in the game."""
@@ -95,19 +93,58 @@ class Board:
             
             board.tiles[h] = Tile(hex_coords=h, resource=res, number=num)
         
-        # Port 3:1
-        h1 = Hex(0, -2, 2)
-        v1 = Vertex(h1, 0).get_canonical()
-        v2 = Vertex(h1, 1).get_canonical()
-        board.ports.append(Port(PortType.GENERIC_3_1, [v1, v2]))
-
-        # Port Wood 2:1
-        h2 = Hex(1, -2, 1)
-        v3 = Vertex(h2, 0).get_canonical()
-        v4 = Vertex(h2, 1).get_canonical()
-        board.ports.append(Port(PortType.WOOD_2_1, [v3, v4]))
-        #TODO - add more ports like in real catan
+        board.ports = Board._create_ports(board)
         return board
+
+    def is_on_board(self, position: Vertex | Edge) -> bool:
+        """A vertex or edge exists only if it touches at least one tile."""
+        return any(h in self.tiles for h in position.get_touching_hexes())
+
+    def vertices(self) -> Set[Vertex]:
+        return {Vertex(h, d).get_canonical() for h in self.tiles for d in range(6)}
+
+    def edges(self) -> Set[Edge]:
+        return {Edge(h, d).get_canonical() for h in self.tiles for d in range(6)}
+
+    @staticmethod
+    def _create_ports(board: 'Board') -> List[Port]:
+        """
+        Places the 9 standard ports (4x 3:1, one 2:1 per resource) on the coast.
+        Walking around the 30 coastal edges, ports repeat every 3, 3 and 4 edges,
+        which leaves the same gaps as the printed frame of the board.
+        """
+        port_types = [PortType.GENERIC_3_1] * 4 + [
+            PortType.WOOD_2_1, PortType.BRICK_2_1, PortType.SHEEP_2_1,
+            PortType.WHEAT_2_1, PortType.ORE_2_1,
+        ]
+        random.shuffle(port_types)
+
+        coast = Board._coastal_edges_in_order(board)
+        ports = []
+        index = 0
+        for i, port_type in enumerate(port_types):
+            ports.append(Port(port_type, coast[index].get_vertices()))
+            index += 4 if i % 3 == 2 else 3
+        return ports
+
+    @staticmethod
+    def _coastal_edges_in_order(board: 'Board') -> List[Edge]:
+        """Returns the edges touching exactly one tile, as a closed walk along the coast."""
+        remaining = {
+            e for e in board.edges()
+            if sum(h in board.tiles for h in e.get_touching_hexes()) == 1
+        }
+        current = min(remaining, key=lambda e: (e.owner.q, e.owner.r, e.direction))
+        remaining.discard(current)
+        vertex = current.get_vertices()[1]
+        walk = [current]
+        while remaining:
+            current = next(e for e in vertex.get_touching_edges() if e in remaining)
+            remaining.discard(current)
+            walk.append(current)
+            first, second = current.get_vertices()
+            vertex = second if first == vertex else first
+        return walk
 
     @staticmethod
     def _generate_hex_grid(radius: int) -> List[Hex]:
