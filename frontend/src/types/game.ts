@@ -1,40 +1,23 @@
 /**
  * TYPE DEFINITIONS
- * Synced with backend/app/services/serializer.py
+ * Synced with backend/app/services/views.py
  */
 
-export const ResourceType = {
-  WOOD: "wood",
-  BRICK: "brick",
-  SHEEP: "sheep",
-  WHEAT: "wheat",
-  ORE: "ore",
-  DESERT: "desert"
-} as const;
-export type ResourceType = (typeof ResourceType)[keyof typeof ResourceType];
+export const RESOURCES = ['wood', 'brick', 'sheep', 'wheat', 'ore'] as const;
+export type Resource = (typeof RESOURCES)[number];
+export type TileResource = Resource | 'desert';
 
-export const PlayerColor = {
-  RED: "red",
-  BLUE: "blue",
-  WHITE: "white",
-  ORANGE: "orange"
-} as const;
-export type PlayerColor = (typeof PlayerColor)[keyof typeof PlayerColor];
+export type PlayerColor = 'red' | 'blue' | 'white' | 'orange';
 
-export const TurnPhase = {
-  SETUP: "setup",       // <--- ADDED THIS
-  ROLL_DICE: "roll_dice",
-  MAIN_PHASE: "main_phase"
-} as const;
-export type TurnPhase = (typeof TurnPhase)[keyof typeof TurnPhase];
+export type TurnPhase =
+  | 'setup'
+  | 'roll_dice'
+  | 'discard'
+  | 'move_robber'
+  | 'steal'
+  | 'main_phase';
 
-export const BuildingType = {
-  SETTLEMENT: "settlement",
-  CITY: "city"
-} as const;
-export type BuildingType = (typeof BuildingType)[keyof typeof BuildingType];
-
-// --- CORE VALUE OBJECTS ---
+export type RoomStatus = 'lobby' | 'playing' | 'finished';
 
 export interface HexCoords {
   q: number;
@@ -42,54 +25,94 @@ export interface HexCoords {
   s: number;
 }
 
+/** A vertex or an edge, identified by its canonical hex and direction. */
+export interface Position {
+  hex: HexCoords;
+  direction: number;
+}
+
 export interface BoardTile {
   hex: HexCoords;
-  resource: ResourceType;
+  resource: TileResource;
   number: number | null;
 }
 
-export interface Road {
-  hex: HexCoords;
-  direction: number;
+export interface Port {
+  type: string;
+  vertices: Position[];
+}
+
+export interface Road extends Position {
   color: PlayerColor;
 }
 
-export interface Settlement {
-  hex: HexCoords;
-  direction: number;
+export interface Building extends Position {
   owner: PlayerColor;
-  type: BuildingType;
+  type: 'settlement' | 'city';
 }
 
-export interface Player {
-  id: string;
+export interface LobbyPlayer {
+  seat: number;
   name: string;
-  color: PlayerColor;
-  resources: Partial<Record<ResourceType, number>>;
-  victory_points: number;
 }
 
-export interface GameState {
-  players: Player[];
-  current_turn_index: number;
+export interface Player extends LobbyPlayer {
+  color: PlayerColor;
+  victory_points: number;
+  card_count: number;
+  road_length: number;
+  pending_discard: number;
+}
+
+export interface GameView {
   turn_phase: TurnPhase;
   dice_roll: number | null;
+  setup_waiting_for_road: boolean;
   robber_hex: HexCoords | null;
   is_game_over: boolean;
-  winner_name: string | null;
-  
-
-  setup_waiting_for_road?: boolean;
-
-  // Board State
   board_tiles: BoardTile[];
+  ports: Port[];
   roads: Road[];
-  settlements: Settlement[];
+  settlements: Building[];
+  longest_road_holder: PlayerColor | null;
+  log: string[];
+  current_seat: number;
+  winner_seat: number | null;
 }
 
-export interface GameCreateResponse {
+export interface PublicState {
   room_id: string;
-  status: string;
-  created_at: string;
-  players: Player[];
+  version: number;
+  status: RoomStatus;
+  host_seat: number;
+  players: (LobbyPlayer | Player)[];
+  game: GameView | null;
+}
+
+export interface LegalMoves {
+  settlements: Position[];
+  roads: Position[];
+  cities: Position[];
+  robber_hexes: HexCoords[];
+  steal_targets: number[];
+  must_discard: number;
+}
+
+export interface PrivateState {
+  seat: number;
+  resources: Partial<Record<Resource, number>>;
+  trade_rates?: Record<Resource, number>;
+  legal: LegalMoves | null;
+}
+
+export interface RoomSession {
+  room_id: string;
+  token: string;
+  seat: number;
+}
+
+export interface RoomSummary {
+  room_id: string;
+  status: RoomStatus;
+  players: { name: string; online: boolean }[];
 }
