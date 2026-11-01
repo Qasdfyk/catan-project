@@ -411,6 +411,23 @@ func TestForeignOriginIsRefused(t *testing.T) {
 	}
 }
 
+func TestHTTPBackendTurnsMissingPayloadIntoAnEmptyObject(t *testing.T) {
+	var received map[string]any
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&received)
+	}))
+	defer backend.Close()
+
+	err := NewHTTPBackend(backend.URL, "key").Action(context.Background(), "room", "token", "roll_dice", json.RawMessage("null"))
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, isObject := received["payload"].(map[string]any); !isObject {
+		t.Fatalf("payload not an object: %v", received)
+	}
+}
+
 func TestHTTPBackendRoundTrip(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-Internal-Key") != "key" {

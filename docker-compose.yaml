@@ -53,7 +53,21 @@ services:
     networks:
       - catan_net
 
-  # --- SERVICE 4: FRONTEND (static files, routes /api and /ws) ---
+  # --- SERVICE 4: BOTS (fill empty seats, Go) ---
+  bots:
+    build:
+      context: ./gateway
+    container_name: catan_bots
+    command: ["bots"]
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - GATEWAY_URL=ws://gateway:8080/ws
+    depends_on:
+      - gateway
+    networks:
+      - catan_net
+
+  # --- SERVICE 5: FRONTEND (static files, routes /api and /ws) ---
   frontend:
     build:
       context: ./frontend

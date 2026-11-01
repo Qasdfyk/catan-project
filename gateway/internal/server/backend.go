@@ -63,7 +63,7 @@ func (b *HTTPBackend) Session(ctx context.Context, roomID, token string) (Sessio
 }
 
 func (b *HTTPBackend) Action(ctx context.Context, roomID, token, action string, payload json.RawMessage) error {
-	if len(payload) == 0 {
+	if len(payload) == 0 || string(payload) == "null" {
 		payload = json.RawMessage("{}")
 	}
 	body := map[string]any{"token": token, "type": action, "payload": payload}
