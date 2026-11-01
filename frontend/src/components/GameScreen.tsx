@@ -1,16 +1,23 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { RoomConnection } from '../net/useRoom';
 import type { GameView, LegalMoves, Player, Position, PrivateState, PublicState } from '../types/game';
 import { Board, type BoardTargets } from './Board';
 import { ChatPanel } from './ChatPanel';
+import { CostDots } from './CostDots';
+import { Dice } from './Dice';
 import { DevCardsPanel } from './DevCardsPanel';
 import { DiscardDialog } from './DiscardDialog';
 import { PlayerTradePanel, TradeOfferPanel } from './PlayerTrade';
 import { ResourceCards } from './ResourceCards';
 import { TradePanel } from './TradePanel';
+import { WinnerDialog } from './WinnerDialog';
 import { PLAYER_COLORS } from '../utils/labels';
 
 type BuildMode = 'settlement' | 'road' | 'city' | null;
+
+const ROAD_COST = { wood: 1, brick: 1 };
+const SETTLEMENT_COST = { wood: 1, brick: 1, wheat: 1, sheep: 1 };
+const CITY_COST = { ore: 3, wheat: 2 };
 
 const NO_TARGETS: BoardTargets = { settlements: [], roads: [], cities: [], robberHexes: [] };
 
@@ -64,6 +71,7 @@ export const GameScreen = ({ state, mine, room }: GameScreenProps) => {
     const { send } = room;
 
     const [buildMode, setBuildMode] = useState<BuildMode>(null);
+    const [winnerClosed, setWinnerClosed] = useState(false);
 
     const legal = mine.legal ?? EMPTY_LEGAL;
     const current = players[game.current_seat];
@@ -99,8 +107,36 @@ export const GameScreen = ({ state, mine, room }: GameScreenProps) => {
 
     const toggleMode = (mode: BuildMode) => setBuildMode(buildMode === mode ? null : mode);
 
+    const canRoll = isMyTurn && game.turn_phase === 'roll_dice';
+    const canEndTurn = isMyTurn && inMain;
+
+    useEffect(() => {
+        document.title = isMyTurn ? 'Your turn · Catan' : 'Catan';
+        return () => { document.title = 'Catan'; };
+    }, [isMyTurn]);
+
+    useEffect(() => {
+        const handleKey = (event: KeyboardEvent) => {
+            const target = event.target as HTMLElement;
+            if (['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName)) return;
+
+            if (event.key === 'Escape') setBuildMode(null);
+            if (event.key === 'r' && canRoll) send('roll_dice');
+            if (event.key === 'e' && canEndTurn) {
+                setBuildMode(null);
+                send('end_turn');
+            }
+        };
+        window.addEventListener('keydown', handleKey);
+        return () => window.removeEventListener('keydown', handleKey);
+    }, [canRoll, canEndTurn, send]);
+
     return (
-        <div className="game">
+        <div className={isMyTurn ? 'game my-turn' : 'game'}>
+            {winner && !winnerClosed && (
+                <WinnerDialog winner={winner} players={players} onClose={() => setWinnerClosed(true)} />
+            )}
+
             <header className="topbar">
                 <strong>Catan</strong>
                 <span className="status-text" data-testid="instruction">
@@ -113,8 +149,8 @@ export const GameScreen = ({ state, mine, room }: GameScreenProps) => {
                         +{mine.hidden_points} hidden VP
                     </span>
                 )}
-                {game.dice_roll !== null && (
-                    <span className="dice" data-testid="dice">Rolled {game.dice_roll}</span>
+                {game.dice_roll !== null && game.dice.length === 2 && (
+                    <Dice values={game.dice} total={game.dice_roll} />
                 )}
                 {!room.connected && <span className="offline">Reconnecting…</span>}
             </header>
@@ -143,26 +179,28 @@ export const GameScreen = ({ state, mine, room }: GameScreenProps) => {
                         >
                             <span className="swatch" style={{ background: PLAYER_COLORS[player.color] }} />
                             <span className={room.online.includes(player.seat) ? 'dot online' : 'dot'} title="Connection" />
-                            <span className="player-name">
-                                {player.name}
-                                {player.seat === mine.seat && <span className="muted"> (you)</span>}
-                                {player.is_bot && <span className="muted"> (bot)</span>}
-                            </span>
-                            <span className="player-stats">
-                                <span title="Cards">{player.card_count} {player.card_count === 1 ? 'card' : 'cards'}</span>
-                                <span title="Development cards">{player.dev_card_count} dev</span>
-                                <span title="Road length">
-                                    road {player.road_length}
-                                    {game.longest_road_holder === player.color && ' ★'}
+                            <span className="player-main">
+                                <span className="player-name">
+                                    {player.name}
+                                    {player.seat === mine.seat && <span className="muted"> (you)</span>}
+                                    {player.is_bot && <span className="muted"> (bot)</span>}
                                 </span>
-                                <span title="Knights played">
-                                    army {player.knights_played}
-                                    {game.largest_army_holder === player.color && ' ★'}
+                                <span className="player-stats">
+                                    <span title="Resource cards">{player.card_count} {player.card_count === 1 ? 'card' : 'cards'}</span>
+                                    <span title="Development cards">{player.dev_card_count} dev</span>
+                                    <span title="Road length">
+                                        road {player.road_length}
+                                        {game.longest_road_holder === player.color && ' ★'}
+                                    </span>
+                                    <span title="Knights played">
+                                        army {player.knights_played}
+                                        {game.largest_army_holder === player.color && ' ★'}
+                                    </span>
                                 </span>
-                                <strong title="Victory points" data-testid={`points-${player.seat}`}>
-                                    {player.victory_points} VP
-                                </strong>
                             </span>
+                            <strong className="points" title="Victory points" data-testid={`points-${player.seat}`}>
+                                {player.victory_points} VP
+                            </strong>
                         </div>
                     ))}
                 </section>
@@ -193,10 +231,6 @@ export const GameScreen = ({ state, mine, room }: GameScreenProps) => {
                     />
                 )}
 
-                {isMyTurn && game.turn_phase === 'roll_dice' && (
-                    <button className="primary big" onClick={() => send('roll_dice')}>Roll dice</button>
-                )}
-
                 {isMyTurn && inMain && (
                     <>
                         <section className="panel" aria-label="Build">
@@ -207,26 +241,23 @@ export const GameScreen = ({ state, mine, room }: GameScreenProps) => {
                                     disabled={legal.roads.length === 0}
                                     title="1 wood, 1 brick"
                                     onClick={() => toggleMode('road')}
-                                >Road</button>
+                                >Road <CostDots cost={ROAD_COST} /></button>
                                 <button
                                     aria-pressed={buildMode === 'settlement'}
                                     disabled={legal.settlements.length === 0}
                                     title="1 wood, 1 brick, 1 wheat, 1 sheep"
                                     onClick={() => toggleMode('settlement')}
-                                >Settlement</button>
+                                >Settlement <CostDots cost={SETTLEMENT_COST} /></button>
                                 <button
                                     aria-pressed={buildMode === 'city'}
                                     disabled={legal.cities.length === 0}
                                     title="3 ore, 2 wheat"
                                     onClick={() => toggleMode('city')}
-                                >City</button>
+                                >City <CostDots cost={CITY_COST} /></button>
                             </div>
                         </section>
                         <TradePanel mine={mine} bank={game.bank} send={send} />
                         {!game.trade_offer && <PlayerTradePanel mine={mine} send={send} />}
-                        <button className="primary big" onClick={() => { setBuildMode(null); send('end_turn'); }}>
-                            End turn
-                        </button>
                     </>
                 )}
 
@@ -252,6 +283,18 @@ export const GameScreen = ({ state, mine, room }: GameScreenProps) => {
 
             <footer className="handbar">
                 <ResourceCards resources={mine.resources} />
+                {canRoll && (
+                    <button className="primary big" title="Shortcut: R" onClick={() => send('roll_dice')}>
+                        Roll dice
+                    </button>
+                )}
+                {canEndTurn && (
+                    <button
+                        className="primary big"
+                        title="Shortcut: E"
+                        onClick={() => { setBuildMode(null); send('end_turn'); }}
+                    >End turn</button>
+                )}
             </footer>
         </div>
     );

@@ -1,4 +1,4 @@
-import type { BoardTile, GameView, HexCoords, Player, PlayerColor, Port, Position } from '../types/game';
+import type { BoardTile, GameView, HexCoords, Player, PlayerColor, Port, Position, TileResource } from '../types/game';
 import {
     getEdgeEndpoints,
     getVertexCoords,
@@ -39,16 +39,44 @@ const positionKey = (kind: string, { hex, direction }: Position) =>
 const positionLabel = (kind: string, { hex, direction }: Position) =>
     `${kind} ${hex.q},${hex.r},${direction}`;
 
-const Tile = ({ tile }: { tile: BoardTile }) => {
+// Scenery around the number token, kept to simple shapes in tile coordinates.
+const SCENERY_SPOTS = [[-30, -30], [28, -32], [-34, 22], [32, 24], [0, 40], [0, -42]];
+
+const TileScenery = ({ resource }: { resource: TileResource }) => (
+    <g className={`scenery scenery-${resource}`}>
+        {SCENERY_SPOTS.map(([x, y]) => {
+            const key = `${x}-${y}`;
+            switch (resource) {
+                case 'wood':
+                    return <path key={key} d={`M ${x} ${y - 11} l 8 15 h -5 v 5 h -6 v -5 h -5 z`} />;
+                case 'brick':
+                    return <path key={key} d={`M ${x - 9} ${y - 4} h 18 v 8 h -18 z M ${x - 9} ${y} h 18 M ${x} ${y - 4} v 4`} />;
+                case 'sheep':
+                    return <ellipse key={key} cx={x} cy={y} rx={8} ry={5.5} />;
+                case 'wheat':
+                    return <path key={key} d={`M ${x} ${y + 10} V ${y - 10} M ${x} ${y - 7} l -5 -3 M ${x} ${y - 7} l 5 -3 M ${x} ${y - 1} l -5 -3 M ${x} ${y - 1} l 5 -3`} />;
+                case 'ore':
+                    return <path key={key} d={`M ${x - 12} ${y + 8} L ${x - 3} ${y - 9} L ${x + 2} ${y - 1} L ${x + 5} ${y - 5} L ${x + 12} ${y + 8} Z`} />;
+                default:
+                    return <circle key={key} cx={x} cy={y} r={2.5} />;
+            }
+        })}
+    </g>
+);
+
+const Tile = ({ tile, rolled }: { tile: BoardTile; rolled: boolean }) => {
     const center = hexToPixel(tile.hex);
     const hot = tile.number === 6 || tile.number === 8;
     return (
         <g>
             <polygon
-                className="tile"
+                className={rolled ? 'tile rolled' : 'tile'}
                 points={points(hexCorners(tile.hex))}
                 fill={RESOURCE_COLORS[tile.resource]}
             />
+            <g transform={`translate(${center.x} ${center.y})`}>
+                <TileScenery resource={tile.resource} />
+            </g>
             {tile.number !== null && (
                 <g className={hot ? 'token hot' : 'token'}>
                     <circle cx={center.x} cy={center.y} r={HEX_SIZE * 0.33} />
@@ -134,7 +162,11 @@ export const Board = ({ game, players, targets, onSettlement, onRoad, onCity, on
     return (
         <svg className="board" viewBox={VIEW_BOX} role="img" aria-label="Game board">
             {game.board_tiles.map((tile) => (
-                <Tile key={`${tile.hex.q}-${tile.hex.r}`} tile={tile} />
+                <Tile
+                    key={`${tile.hex.q}-${tile.hex.r}`}
+                    tile={tile}
+                    rolled={game.dice_roll !== null && tile.number === game.dice_roll}
+                />
             ))}
 
             {game.ports.map((port) => (

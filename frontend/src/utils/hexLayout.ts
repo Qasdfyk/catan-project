@@ -40,10 +40,10 @@ export const hexCorners = (hex: HexCoords): Point[] =>
 export const numberPips = (number: number): number => 6 - Math.abs(7 - number);
 
 export const RESOURCE_COLORS: Record<TileResource, string> = {
-    wood: '#2f7d4f',
-    brick: '#b4532a',
-    sheep: '#93c15a',
-    wheat: '#e9bf3f',
-    ore: '#7b8794',
-    desert: '#dcc48e',
+    wood: '#2f7a4c',
+    brick: '#b9572d',
+    sheep: '#8fc45a',
+    wheat: '#e6b93a',
+    ore: '#78828e',
+    desert: '#e0ca95',
 };

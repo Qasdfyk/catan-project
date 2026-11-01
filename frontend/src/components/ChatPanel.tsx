@@ -31,9 +31,8 @@ export const ChatPanel = ({ messages, players, onSend }: ChatPanelProps) => {
             <ol ref={list}>
                 {messages.map((message, index) => (
                     <li key={index}>
-                        <strong style={{ color: PLAYER_COLORS[players[message.seat].color] }}>
-                            {players[message.seat].name}
-                        </strong>{' '}
+                        <span className="swatch small" style={{ background: PLAYER_COLORS[players[message.seat].color] }} />
+                        <strong>{players[message.seat].name}</strong>{' '}
                         {message.text}
                     </li>
                 ))}

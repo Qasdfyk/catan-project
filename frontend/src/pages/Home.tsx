@@ -27,7 +27,7 @@ export const Home = () => {
         <main className="center-page">
             <form className="card" onSubmit={handleSubmit}>
                 <h1>Catan</h1>
-                <p className="muted">Create a room, then send the link to 1–3 friends.</p>
+                <p className="muted">Create a room, then invite friends or fill the seats with bots.</p>
                 <label>
                     Your name
                     <input

@@ -210,3 +210,70 @@ button.full { width: 100%; margin-top: 8px; }
 
 .chat ol { list-style: none; margin: 0 0 6px; padding: 0; max-height: 110px; overflow-y: auto; font-size: 13px; }
 .chat li { overflow-wrap: anywhere; }
+
+/* --- Look of the game --- */
+body { background: linear-gradient(160deg, #173f5c, #245f80); }
+
+.card { box-shadow: 0 12px 40px rgba(0, 0, 0, .3); }
+a.button { display: inline-block; padding: 8px 12px; border-radius: 6px; text-align: center; text-decoration: none; }
+a.button.primary { flex: 1; background: var(--accent); color: var(--accent-text); font-weight: 600; }
+
+.board-area { background: radial-gradient(circle at 50% 45%, #3c9cc6, #1f6d94 75%); }
+
+.tile { transition: filter .25s; }
+.tile.rolled { stroke: #fff2a8; stroke-width: 6; filter: brightness(1.14); }
+
+.scenery { pointer-events: none; opacity: .42; }
+.scenery-wood path { fill: #123f27; }
+.scenery-brick path { fill: #7d3518; stroke: #e7a884; stroke-width: 1; }
+.scenery-sheep ellipse { fill: #f7f7ee; }
+.scenery-wheat path { fill: none; stroke: #8a6410; stroke-width: 2; stroke-linecap: round; }
+.scenery-ore path { fill: #4a525c; }
+.scenery-desert circle { fill: #b99b5e; }
+
+.piece, .road { animation: pop-in .22s ease-out; transform-box: fill-box; transform-origin: center; }
+@keyframes pop-in { from { opacity: .2; transform: scale(.6); } to { opacity: 1; transform: scale(1); } }
+
+.target-vertex, .target-hex { animation: pulse 1.3s ease-in-out infinite; }
+@keyframes pulse { 50% { stroke-opacity: .45; } }
+
+.topbar { transition: background .25s, box-shadow .25s; }
+.my-turn .topbar { background: #fff4c7; box-shadow: inset 0 -3px 0 #e6b93a; }
+
+.dice { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 16px; }
+.die { width: 30px; height: 30px; animation: roll .45s ease-out; }
+.die rect { fill: #fffdf6; stroke: #333; stroke-width: 1; }
+.die circle { fill: #222; }
+.die + .die { animation-delay: .06s; }
+@keyframes roll { from { transform: rotate(-200deg) scale(.5); } to { transform: rotate(0) scale(1); } }
+
+.player { align-items: flex-start; padding: 6px; }
+.player > .swatch, .player > .dot { margin-top: 3px; }
+.player-main { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.player-stats { flex-wrap: wrap; gap: 2px 8px; font-size: 12px; color: var(--muted); white-space: normal; }
+.points { white-space: nowrap; }
+
+.handbar { display: flex; align-items: center; justify-content: center; gap: 16px; }
+.handbar button.big { width: auto; min-width: 130px; }
+.card-pile { position: relative; }
+.change { position: absolute; top: -12px; right: -6px; padding: 0 6px; border-radius: 10px; font-style: normal; font-weight: 700; font-size: 13px; color: #fff; animation: float-up .3s ease-out; }
+.change.gain { background: #2ea043; }
+.change.loss { background: var(--danger); }
+@keyframes float-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+.cost { display: inline-flex; gap: 2px; margin-left: 4px; vertical-align: middle; }
+.cost i { width: 7px; height: 7px; border-radius: 50%; border: 1px solid rgba(0, 0, 0, .35); }
+
+.overlay { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 16px; background: rgba(10, 30, 45, .6); }
+.ranking { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ranking li { display: flex; align-items: center; gap: 8px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
+@media (max-width: 860px) {
+  .handbar { flex-wrap: wrap; position: sticky; bottom: 0; z-index: 5; }
+}
+
+.swatch.small { display: inline-block; width: 9px; height: 9px; margin-right: 4px; }
