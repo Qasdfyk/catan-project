@@ -6,6 +6,9 @@ import pytest
 import pytest_asyncio
 
 from app.core.config import settings
+from app.models.game import GameState
+from app.models.player import DevCard
+from app.services.views import public_view
 from app.main import app
 from app.services.redis_service import ACTIVE_BOTS_KEY, BOTS_CHANNEL, EVENTS_CHANNEL, RedisService
 from app.services.room_service import RoomService
@@ -391,3 +394,16 @@ async def test_bot_tokens_stay_out_of_public_state(client):
 
     assert bot_token not in json.dumps(state)
     await app.state.redis.redis.delete(ACTIVE_BOTS_KEY)
+
+
+def test_hidden_points_are_revealed_only_when_the_game_ends():
+    game = GameState.create_new_game(["Alice", "Bob"])
+    game.players[0].dev_cards = [DevCard.VICTORY_POINT]
+    room = {"room_id": "r", "version": 1, "status": "playing", "host_seat": 0,
+            "seats": [{"name": "Alice"}, {"name": "Bob"}]}
+
+    assert public_view(room, game)["players"][0]["victory_points"] == 0
+
+    game.is_game_over = True
+
+    assert public_view(room, game)["players"][0]["victory_points"] == 1

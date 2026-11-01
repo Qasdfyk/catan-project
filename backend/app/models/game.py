@@ -83,6 +83,7 @@ class GameState:
     players: List[Player] = field(default_factory=list)
     current_turn_index: int = 0
     dice_roll: Optional[int] = None
+    dice: List[int] = field(default_factory=list)
     turn_phase: TurnPhase = TurnPhase.SETUP
     
     # --- SETUP PHASE STATE ---
@@ -213,6 +214,7 @@ class GameState:
         d1 = random.randint(1, 6)
         d2 = random.randint(1, 6)
         self.dice_roll = d1 + d2
+        self.dice = [d1, d2]
         self._log(f"{player.name} rolled {self.dice_roll}.")
 
         if self.dice_roll == 7:

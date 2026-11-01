@@ -13,6 +13,7 @@ class GameSerializer:
             "current_turn_index": game.current_turn_index,
             "turn_phase": game.turn_phase.value,
             "dice_roll": game.dice_roll,
+            "dice": game.dice,
             
             "setup_queue": game.setup_queue,
             "setup_waiting_for_road": game.setup_waiting_for_road,
@@ -53,6 +54,7 @@ class GameSerializer:
             players=players,
             current_turn_index=data["current_turn_index"],
             dice_roll=data["dice_roll"],
+            dice=data.get("dice", []),
             turn_phase=TurnPhase(data["turn_phase"]),
             robber_hex=GameSerializer._dict_to_hex(data["robber_hex"]) if data["robber_hex"] else None,
             is_game_over=data["is_game_over"],

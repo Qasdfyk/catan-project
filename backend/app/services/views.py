@@ -9,7 +9,7 @@ from app.models.hex_lib import Edge, Hex, Vertex
 from app.services.serializer import GameSerializer
 
 PUBLIC_GAME_FIELDS = (
-    "turn_phase", "dice_roll", "setup_waiting_for_road", "robber_hex", "is_game_over",
+    "turn_phase", "dice_roll", "dice", "setup_waiting_for_road", "robber_hex", "is_game_over",
     "board_tiles", "ports", "roads", "settlements", "longest_road_holder", "largest_army_holder",
     "free_roads_left", "log",
 )
@@ -64,7 +64,8 @@ def public_view(room: Dict[str, Any], game: Optional[GameState]) -> Dict[str, An
             "name": player.name,
             "is_bot": room["seats"][seat].get("bot", False),
             "color": player.color.value,
-            "victory_points": player.victory_points,
+            # Hidden cards are revealed when they can no longer be used against the owner
+            "victory_points": player.victory_points + (player.hidden_points() if game.is_game_over else 0),
             "card_count": player.card_count(),
             "road_length": game.road_lengths.get(player.color, 0),
             "pending_discard": game.pending_discards.get(player.color, 0),

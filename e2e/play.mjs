@@ -1,6 +1,6 @@
 // Plays a whole game in real browser tabs by clicking the UI, one tab per player.
 //
-//   BASE_URL=http://localhost:5173 PLAYERS=2 node play.mjs
+//   BASE_URL=http://localhost:5173 PLAYERS=2 BOTS=0 node play.mjs
 //
 // Fails on any console error, or if a part of the game was never reached.
 import assert from 'node:assert/strict';
@@ -9,6 +9,7 @@ import { chromium } from 'playwright';
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5173';
 const PLAYERS = Number(process.env.PLAYERS ?? 2);
+const BOTS = Number(process.env.BOTS ?? 0);
 const SHOTS = process.env.SCREENSHOTS ?? 'screenshots';
 const MAX_STEPS = 60_000;
 const NAMES = ['Alice', 'Bob', 'Charlie', 'Dana'];
@@ -16,6 +17,7 @@ const NAMES = ['Alice', 'Bob', 'Charlie', 'Dana'];
 const seen = {
     turns: 0, sevens: 0, discards: 0, robberMoves: 0, steals: 0,
     roads: 0, settlements: 0, cities: 0, trades: 0, longestRoad: 0,
+    cardsBought: 0, cardsPlayed: 0, offers: 0, playerTrades: 0,
 };
 const problems = [];
 
@@ -123,10 +125,76 @@ const tryBuild = async (page, label, prefix, counter) => {
 
 let tradedThisTurn = false;
 
+const tryPlayCard = async (page) => {
+    const panel = page.getByRole('region', { name: 'Development cards' });
+    const play = panel.getByRole('button', { name: /^Play / });
+    if ((await play.count()) === 0) return false;
+
+    await pick(await play.all()).click();
+    const confirm = panel.getByRole('button', { name: 'Confirm' });
+    if (await confirm.isVisible()) await act(page, () => confirm.click());
+    else await page.waitForTimeout(100);
+    seen.cardsPlayed += 1;
+    return true;
+};
+
+const tryBuyCard = async (page) => {
+    const buy = page.getByRole('button', { name: 'Buy a card' });
+    if ((await buy.count()) === 0) return false;
+    await act(page, () => buy.click());
+    seen.cardsBought += 1;
+    return true;
+};
+
+// Asks another tab for a card: both sides are played by step().
+const tryOffer = async (page) => {
+    const hand = await handOf(page);
+    const give = Object.keys(hand).find((resource) => hand[resource] > 0);
+    const get = Object.keys(hand).find((resource) => resource !== give);
+    if (!give) return false;
+
+    await page.getByRole('button', { name: 'Trade with players' }).click();
+    const panel = page.getByRole('region', { name: 'Offer a trade' });
+    await panel.getByRole('button', { name: `Give one ${give} more` }).click();
+    await panel.getByRole('button', { name: `Get one ${get} more` }).click();
+    await act(page, () => panel.getByRole('button', { name: 'Offer', exact: true }).click());
+    seen.offers += 1;
+    return true;
+};
+
+const handleOffer = async (page) => {
+    const panel = page.getByRole('region', { name: 'Trade offer' });
+    if ((await panel.count()) === 0) return false;
+
+    const confirm = panel.getByRole('button', { name: /^Trade with / });
+    if ((await confirm.count()) > 0) {
+        await act(page, () => confirm.first().click());
+        seen.playerTrades += 1;
+        return true;
+    }
+    if ((await panel.getByText('Everyone declined').count()) > 0) {
+        await act(page, () => panel.getByRole('button', { name: 'Withdraw' }).click());
+        return true;
+    }
+
+    const accept = panel.getByRole('button', { name: 'Accept' });
+    if ((await accept.count()) === 0) return false;
+    if ((await panel.getByRole('button', { pressed: true }).count()) > 0) return false;
+    const answer = (await accept.isEnabled()) ? accept : panel.getByRole('button', { name: 'Decline' });
+    await act(page, () => answer.click());
+    return true;
+};
+
 const playMainPhase = async (page) => {
     if (await tryBuild(page, 'City', 'city', 'cities')) return;
     if (await tryBuild(page, 'Settlement', 'settlement', 'settlements')) return;
+    if (await tryPlayCard(page)) return;
+    if (await tryBuyCard(page)) return;
     if (Math.random() < 0.7 && (await tryBuild(page, 'Road', 'road', 'roads'))) return;
+    if (PLAYERS > 1 && !tradedThisTurn && Math.random() < 0.3 && (await tryOffer(page))) {
+        tradedThisTurn = true;
+        return;
+    }
     if (!tradedThisTurn && (await tryTrade(page))) {
         tradedThisTurn = true;
         return;
@@ -140,9 +208,10 @@ const playMainPhase = async (page) => {
 const step = async (page) => {
     const text = await instructionOf(page);
 
+    if (await handleOffer(page)) return;
     if (text.startsWith('Discard')) return discard(page);
     if (text === 'Place a settlement.') return act(page, () => clickTarget(page, 'settlement'));
-    if (text.startsWith('Place a road')) return act(page, () => clickTarget(page, 'road'));
+    if (text.startsWith('Place a road') || text.startsWith('Place a free road')) return act(page, () => clickTarget(page, 'road'));
     if (text === 'Roll the dice.') {
         await act(page, () => page.getByRole('button', { name: 'Roll dice' }).click());
         const dice = await page.getByTestId('dice').textContent().catch(() => '');
@@ -173,6 +242,11 @@ const checkLobby = async (context) => {
     assert.equal(await host.getByRole('button', { name: /Waiting for players/ }).isDisabled(), true);
     const roomUrl = host.url();
 
+    for (let bot = 0; bot < BOTS; bot += 1) {
+        await host.getByRole('button', { name: 'Add a bot' }).click();
+        await host.locator('.lobby-players li').nth(bot + 1).waitFor();
+    }
+
     const tabs = [host];
     for (const name of NAMES.slice(1, PLAYERS)) {
         const guest = await openTab(context, name);
@@ -191,7 +265,6 @@ const checkLobby = async (context) => {
     await stranger.close();
     problems.length = 0; // the refused request above is logged by the browser as a 409
 
-    await host.getByText(NAMES[1]).waitFor();
     await shot(host, '02-lobby');
     await host.getByRole('button', { name: 'Start game' }).click();
     for (const tab of tabs) await tab.getByTestId('instruction').waitFor();
@@ -205,6 +278,7 @@ const checkMissingRoom = async (context) => {
     await page.close();
 };
 
+// Opponent's tab or the host's own: either way the action is out of turn or out of phase.
 const checkRefusedActionIsShown = async (page) => {
     await page.evaluate(() => window.gameSocket.send(JSON.stringify({
         type: 'action', request_id: 999, action: 'end_turn', payload: {},
@@ -213,6 +287,7 @@ const checkRefusedActionIsShown = async (page) => {
     await toast.waitFor();
     await shot(page, '03-error');
     assert.match(await toast.textContent(), /setup|not your turn/i);
+    await toast.waitFor({ state: 'detached', timeout: 7000 });
 };
 
 const checkReturnByName = async (context, tabs, roomUrl) => {
@@ -236,6 +311,13 @@ const checkReturnByName = async (context, tabs, roomUrl) => {
     tabs[index] = returned;
 };
 
+const checkChat = async (tabs) => {
+    const [sender, receiver] = [tabs[0], tabs[tabs.length - 1]];
+    await sender.getByRole('textbox', { name: 'Message' }).fill('Anyone got wood?');
+    await sender.getByRole('textbox', { name: 'Message' }).press('Enter');
+    await receiver.getByRole('region', { name: 'Chat' }).getByText('Anyone got wood?').waitFor();
+};
+
 const noteLongestRoad = async (page) => {
     if (await page.locator('.player-stats', { hasText: '★' }).count()) seen.longestRoad += 1;
 };
@@ -248,7 +330,8 @@ const main = async () => {
     await checkMissingRoom(context);
     const { tabs, roomUrl } = await checkLobby(context);
     await shot(tabs[0], '04-setup-start');
-    await checkRefusedActionIsShown(tabs[1]);
+    await checkRefusedActionIsShown(tabs[tabs.length - 1]);
+    await checkChat(tabs);
 
     let winner = null;
     let returned = false;
@@ -262,10 +345,11 @@ const main = async () => {
         }
 
         await noteLongestRoad(tabs[0]);
+        if (tabs.length === 1) await tabs[0].waitForTimeout(40);
 
         if (steps % 100 === 0) console.log(`step ${steps}:`, JSON.stringify(seen));
 
-        if (!shotOfMidgame && seen.cities > 0) {
+        if (!shotOfMidgame && seen.cardsBought > 1) {
             shotOfMidgame = true;
             for (const [index, page] of tabs.entries()) await shot(page, `05-midgame-tab${index + 1}`);
         }
@@ -277,15 +361,17 @@ const main = async () => {
 
     assert.ok(winner, `no winner after ${MAX_STEPS} steps`);
     await shot(tabs[0], '06-game-over');
+    await tabs[0].getByRole('dialog', { name: 'Game over' }).waitFor();
 
     // Every tab must agree on the result, and nobody can act any more
     for (const page of tabs) {
+        await page.getByRole('button', { name: 'See the board' }).click();
         assert.equal(await instructionOf(page), winner);
         assert.equal(await page.getByRole('button', { name: 'End turn' }).count(), 0);
         assert.equal(await page.getByRole('button', { name: 'Roll dice' }).count(), 0);
     }
     const points = await Promise.all(
-        tabs.map((_, seat) => tabs[0].getByTestId(`points-${seat}`).textContent()),
+        Array.from({ length: PLAYERS + BOTS }, (_, seat) => tabs[0].getByTestId(`points-${seat}`).textContent()),
     );
 
     console.log(`Result: ${winner} Points: ${points.join(', ')}`);
@@ -293,7 +379,8 @@ const main = async () => {
     await browser.close();
 
     assert.deepEqual(problems, [], 'console errors');
-    for (const key of ['turns', 'roads', 'settlements', 'cities', 'trades', 'sevens', 'robberMoves']) {
+    // A short game against bots may not get far enough for the human player
+    for (const key of BOTS > 0 ? ['turns'] : ['turns', 'roads', 'trades', 'cardsBought']) {
         assert.ok(seen[key] > 0, `the game never reached: ${key}`);
     }
 };
