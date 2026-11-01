@@ -10,6 +10,7 @@ type clientMessage struct {
 	RequestID int64           `json:"request_id,omitempty"`
 	Action    string          `json:"action,omitempty"`
 	Payload   json.RawMessage `json:"payload,omitempty"`
+	Text      string          `json:"text,omitempty"`
 }
 
 // Messages to the browser.
@@ -22,6 +23,15 @@ type stateMessage struct {
 type presenceMessage struct {
 	Type   string `json:"type"`
 	Online []int  `json:"online"`
+}
+
+// ChatMessage is also the form stored in the room's history.
+type ChatMessage struct {
+	Type   string `json:"type"`
+	RoomID string `json:"room_id,omitempty"`
+	Seat   int    `json:"seat"`
+	Text   string `json:"text"`
+	SentAt int64  `json:"sent_at"`
 }
 
 type ackMessage struct {

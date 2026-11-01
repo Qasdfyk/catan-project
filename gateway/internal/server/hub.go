@@ -23,10 +23,21 @@ type Hub struct {
 	mu       sync.RWMutex
 	rooms    map[string]map[*client]struct{}
 	presence Presence
+	metrics  *Metrics
 }
 
-func NewHub(presence Presence) *Hub {
-	return &Hub{rooms: make(map[string]map[*client]struct{}), presence: presence}
+func NewHub(presence Presence, metrics *Metrics) *Hub {
+	return &Hub{rooms: make(map[string]map[*client]struct{}), presence: presence, metrics: metrics}
+}
+
+// Size returns the number of open rooms and connected clients.
+func (h *Hub) Size() (rooms, clients int) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, members := range h.rooms {
+		clients += len(members)
+	}
+	return len(h.rooms), clients
 }
 
 func (h *Hub) add(c *client) {
@@ -96,6 +107,22 @@ func (h *Hub) Deliver(event RoomEvent) {
 			bySeat[c.seat] = message
 		}
 		c.enqueue(message)
+	}
+	h.metrics.EventsDelivered.Add(int64(len(clients)))
+}
+
+// DeliverChat sends a chat message to everyone in its room.
+func (h *Hub) DeliverChat(message ChatMessage) {
+	roomID := message.RoomID
+	message.RoomID = ""
+	encoded, err := json.Marshal(message)
+	if err != nil {
+		return
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for c := range h.rooms[roomID] {
+		c.enqueue(encoded)
 	}
 }
 

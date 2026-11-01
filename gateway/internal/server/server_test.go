@@ -66,21 +66,47 @@ func (p *fakePresence) Clear(_ context.Context, roomID string, seat int) error {
 	return nil
 }
 
+// fakeChat delivers straight to the hub, like the Redis channel would.
+type fakeChat struct {
+	mu      sync.Mutex
+	hub     *Hub
+	history []ChatMessage
+}
+
+func (c *fakeChat) Publish(_ context.Context, message ChatMessage) error {
+	c.mu.Lock()
+	c.history = append(c.history, message)
+	c.mu.Unlock()
+	c.hub.DeliverChat(message)
+	return nil
+}
+
+func (c *fakeChat) Recent(context.Context, string) ([]ChatMessage, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]ChatMessage{}, c.history...), nil
+}
+
 type harness struct {
 	url      string
 	hub      *Hub
 	backend  *fakeBackend
 	presence *fakePresence
+	metrics  *Metrics
 }
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 	backend := &fakeBackend{seats: map[string]int{"alice": 0, "bob": 1}}
 	presence := newFakePresence()
-	hub := NewHub(presence)
-	server := httptest.NewServer(&Handler{Hub: hub, Backend: backend, OriginPatterns: []string{"allowed.test"}})
+	metrics := &Metrics{}
+	hub := NewHub(presence, metrics)
+	server := httptest.NewServer(&Handler{
+		Hub: hub, Backend: backend, Chat: &fakeChat{hub: hub}, Metrics: metrics,
+		OriginPatterns: []string{"allowed.test"},
+	})
 	t.Cleanup(server.Close)
-	return &harness{"ws" + strings.TrimPrefix(server.URL, "http"), hub, backend, presence}
+	return &harness{"ws" + strings.TrimPrefix(server.URL, "http"), hub, backend, presence, metrics}
 }
 
 type testConn struct {
@@ -313,12 +339,13 @@ func TestPresenceFollowsConnections(t *testing.T) {
 }
 
 func TestSlowClientIsDroppedWithoutBlockingOthers(t *testing.T) {
-	h := NewHub(newFakePresence())
+	h := NewHub(newFakePresence(), &Metrics{})
 	cancelled := make(chan struct{})
 	slow := &client{
 		send:   make(chan []byte), // nobody reads this queue
 		cancel: func() { close(cancelled) },
 		roomID: "room",
+		hub:    h,
 	}
 	h.rooms["room"] = map[*client]struct{}{slow: {}}
 
@@ -409,5 +436,119 @@ func TestHTTPBackendRoundTrip(t *testing.T) {
 	var rejected *RejectedError
 	if !errors.As(err, &rejected) || rejected.Message != "It is not your turn." {
 		t.Fatalf("action: %v", err)
+	}
+}
+
+func TestChatReachesTheRoomWithTheSendersSeat(t *testing.T) {
+	h := newHarness(t)
+	alice := h.join(t, "alice")
+	bob := h.join(t, "bob")
+
+	bob.send(map[string]any{"type": "chat", "text": "  wood for ore?  "})
+
+	message := alice.readType("chat")
+	if message["seat"] != float64(1) || message["text"] != "wood for ore?" {
+		t.Fatalf("unexpected chat: %v", message)
+	}
+	if _, leaked := message["room_id"]; leaked {
+		t.Fatalf("internal field sent to browser: %v", message)
+	}
+}
+
+func TestNewConnectionGetsChatHistory(t *testing.T) {
+	h := newHarness(t)
+	alice := h.join(t, "alice")
+	alice.send(map[string]any{"type": "chat", "text": "hello"})
+	alice.readType("chat")
+
+	bob := h.join(t, "bob")
+
+	if message := bob.readType("chat"); message["text"] != "hello" {
+		t.Fatalf("unexpected history: %v", message)
+	}
+}
+
+func TestChatRejectsTooLongMessages(t *testing.T) {
+	h := newHarness(t)
+	alice := h.join(t, "alice")
+
+	alice.send(map[string]any{"type": "chat", "text": strings.Repeat("x", maxChatRunes+1)})
+
+	if message := alice.readType("error"); message["message"] != "That message is too long." {
+		t.Fatalf("unexpected error: %v", message)
+	}
+}
+
+func TestChatCountsCharactersNotBytes(t *testing.T) {
+	h := newHarness(t)
+	alice := h.join(t, "alice")
+
+	alice.send(map[string]any{"type": "chat", "text": strings.Repeat("ż", maxChatRunes)})
+
+	alice.readType("chat")
+}
+
+func TestFloodIsLimitedWithoutClosingTheConnection(t *testing.T) {
+	h := newHarness(t)
+	alice := h.join(t, "alice")
+
+	limited := false
+	for i := range rateBurst + 5 {
+		alice.send(map[string]any{"type": "action", "request_id": i + 1, "action": "roll_dice"})
+	}
+	for range rateBurst + 5 {
+		for {
+			message := alice.read()
+			if message["type"] == "error" && message["message"] == "Slow down a little." {
+				limited = true
+			}
+			if message["type"] == "ack" || message["type"] == "error" {
+				break
+			}
+		}
+	}
+
+	if !limited {
+		t.Fatal("flood was not limited")
+	}
+	if h.metrics.RateLimited.Load() == 0 {
+		t.Fatal("limit not counted")
+	}
+}
+
+func TestRateLimiterRefillsOverTime(t *testing.T) {
+	now := time.Unix(0, 0)
+	limiter := newRateLimiter(func() time.Time { return now })
+
+	for range rateBurst {
+		if !limiter.allow() {
+			t.Fatal("burst refused")
+		}
+	}
+	if limiter.allow() {
+		t.Fatal("limit not applied")
+	}
+
+	now = now.Add(time.Second)
+
+	if !limiter.allow() {
+		t.Fatal("limit did not refill")
+	}
+}
+
+func TestMetricsExposeCounters(t *testing.T) {
+	h := newHarness(t)
+	alice := h.join(t, "alice")
+	alice.send(map[string]any{"type": "action", "request_id": 1, "action": "roll_dice"})
+	alice.readType("ack")
+
+	recorder := httptest.NewRecorder()
+	h.metrics.Handler(h.hub).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+
+	body := recorder.Body.String()
+	for _, line := range []string{"catan_gateway_clients 1", "catan_gateway_rooms 1", "catan_gateway_actions_total 1"} {
+		if !strings.Contains(body, line) {
+			t.Fatalf("missing %q in:\n%s", line, body)
+		}
 	}
 }

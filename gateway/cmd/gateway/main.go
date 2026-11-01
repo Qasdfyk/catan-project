@@ -36,7 +36,8 @@ func main() {
 	redisClient := redis.NewClient(options)
 	defer redisClient.Close()
 
-	hub := server.NewHub(server.RedisPresence{Client: redisClient})
+	metrics := &server.Metrics{}
+	hub := server.NewHub(server.RedisPresence{Client: redisClient}, metrics)
 	go server.ConsumeEvents(ctx, redisClient, hub)
 	go hub.RefreshPresence(ctx)
 
@@ -44,8 +45,11 @@ func main() {
 	mux.Handle("/ws", &server.Handler{
 		Hub:            hub,
 		Backend:        server.NewHTTPBackend(env("BACKEND_URL", "http://localhost:8000"), env("INTERNAL_API_KEY", "dev-internal-key")),
+		Chat:           server.RedisChat{Client: redisClient},
+		Metrics:        metrics,
 		OriginPatterns: strings.Split(env("ALLOWED_ORIGINS", "localhost:*,127.0.0.1:*"), ","),
 	})
+	mux.Handle("/metrics", metrics.Handler(hub))
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok","service":"catan-gateway"}`))

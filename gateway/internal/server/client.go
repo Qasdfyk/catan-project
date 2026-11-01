@@ -7,8 +7,10 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/coder/websocket"
 )
@@ -19,6 +21,8 @@ const (
 	helloTimeout    = 10 * time.Second
 	writeTimeout    = 10 * time.Second
 	pingInterval    = 25 * time.Second
+
+	maxChatRunes = 200
 )
 
 const serverErrorMessage = "Something went wrong on the server. Try again."
@@ -30,6 +34,8 @@ type client struct {
 	conn   *websocket.Conn
 	send   chan []byte
 	cancel context.CancelFunc
+	limit  *rateLimiter
+	hub    *Hub
 
 	roomID string
 	token  string
@@ -41,6 +47,7 @@ func (c *client) enqueue(message []byte) {
 	select {
 	case c.send <- message:
 	default:
+		c.hub.metrics.ClientsDropped.Add(1)
 		c.cancel()
 	}
 }
@@ -58,7 +65,9 @@ func (c *client) enqueueJSON(message any) {
 type Handler struct {
 	Hub            *Hub
 	Backend        Backend
+	Chat           ChatStore
 	OriginPatterns []string
+	Metrics        *Metrics
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -72,7 +81,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
-	c := &client{conn: conn, send: make(chan []byte, sendQueueSize), cancel: cancel}
+	c := &client{
+		conn:   conn,
+		send:   make(chan []byte, sendQueueSize),
+		cancel: cancel,
+		limit:  newRateLimiter(time.Now),
+		hub:    h.Hub,
+	}
+	h.Metrics.Connections.Add(1)
 
 	var writers sync.WaitGroup
 	writers.Add(1)
@@ -121,7 +137,20 @@ func (h *Handler) authenticate(ctx context.Context, c *client) bool {
 		return false
 	}
 	c.enqueueJSON(stateMessage{Type: "state", Public: session.Public, Private: session.Private})
+	h.sendChatHistory(helloCtx, c)
 	return true
+}
+
+func (h *Handler) sendChatHistory(ctx context.Context, c *client) {
+	history, err := h.Chat.Recent(ctx, c.roomID)
+	if err != nil {
+		log.Printf("chat: %v", err)
+		return
+	}
+	for _, message := range history {
+		message.RoomID = ""
+		c.enqueueJSON(message)
+	}
 }
 
 func (h *Handler) readLoop(ctx context.Context, c *client) {
@@ -130,10 +159,20 @@ func (h *Handler) readLoop(ctx context.Context, c *client) {
 		if !readJSON(ctx, c.conn, &message) {
 			return
 		}
+		if !c.limit.allow() {
+			h.Metrics.RateLimited.Add(1)
+			c.enqueueJSON(errorMessage{Type: "error", RequestID: message.RequestID, Message: "Slow down a little."})
+			continue
+		}
+		if message.Type == "chat" {
+			h.handleChat(ctx, c, message.Text)
+			continue
+		}
 		if message.Type != "action" {
 			c.enqueueJSON(errorMessage{Type: "error", RequestID: message.RequestID, Message: "Unknown message."})
 			continue
 		}
+		h.Metrics.Actions.Add(1)
 
 		// One action at a time per connection keeps a flooding client from
 		// tying up more than its own share of the backend.
@@ -149,6 +188,22 @@ func (h *Handler) readLoop(ctx context.Context, c *client) {
 		if IsSessionFatal(err) {
 			return
 		}
+	}
+}
+
+func (h *Handler) handleChat(ctx context.Context, c *client, text string) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return
+	}
+	if !utf8.ValidString(text) || utf8.RuneCountInString(text) > maxChatRunes {
+		c.enqueueJSON(errorMessage{Type: "error", Message: "That message is too long."})
+		return
+	}
+	message := ChatMessage{Type: "chat", RoomID: c.roomID, Seat: c.seat, Text: text, SentAt: time.Now().Unix()}
+	if err := h.Chat.Publish(ctx, message); err != nil {
+		log.Printf("chat: %v", err)
+		c.enqueueJSON(errorMessage{Type: "error", Message: serverErrorMessage})
 	}
 }
 
