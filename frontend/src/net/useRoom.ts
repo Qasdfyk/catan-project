@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { PrivateState, PublicState, RoomSession } from '../types/game';
+import type { ChatMessage, PrivateState, PublicState, RoomSession } from '../types/game';
 
 const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000];
 const ERROR_VISIBLE_MS = 5000;
@@ -12,6 +12,7 @@ const socketUrl = () => {
 type ServerMessage =
     | { type: 'state'; public: PublicState; private: PrivateState }
     | { type: 'presence'; online: number[] }
+    | ({ type: 'chat' } & ChatMessage)
     | { type: 'ack'; request_id: number }
     | { type: 'error'; message: string; fatal?: boolean };
 
@@ -25,7 +26,9 @@ export interface RoomConnection {
     error: string | null;
     /** The session is gone (room removed or seat taken over): the player must join again. */
     sessionLost: boolean;
+    chat: ChatMessage[];
     send: SendAction;
+    sendChat: (text: string) => void;
 }
 
 export const useRoom = (session: RoomSession): RoomConnection => {
@@ -35,6 +38,7 @@ export const useRoom = (session: RoomSession): RoomConnection => {
     const [online, setOnline] = useState<number[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [sessionLost, setSessionLost] = useState(false);
+    const [chat, setChat] = useState<ChatMessage[]>([]);
 
     const socketRef = useRef<WebSocket | null>(null);
     const requestId = useRef(0);
@@ -57,6 +61,8 @@ export const useRoom = (session: RoomSession): RoomConnection => {
             socketRef.current = socket;
 
             socket.onopen = () => {
+                // The gateway sends the recent history after every connection
+                setChat([]);
                 socket.send(JSON.stringify({ type: 'hello', room_id: session.room_id, token: session.token }));
             };
 
@@ -73,6 +79,8 @@ export const useRoom = (session: RoomSession): RoomConnection => {
                     }
                 } else if (message.type === 'presence') {
                     setOnline(message.online);
+                } else if (message.type === 'chat') {
+                    setChat((messages) => [...messages, message]);
                 } else if (message.type === 'error') {
                     if (message.fatal) {
                         closed = true;
@@ -110,5 +118,12 @@ export const useRoom = (session: RoomSession): RoomConnection => {
         socket.send(JSON.stringify({ type: 'action', request_id: requestId.current, action, payload }));
     }, [showError]);
 
-    return { connected, publicState, privateState, online, error, sessionLost, send };
+    const sendChat = useCallback((text: string) => {
+        const socket = socketRef.current;
+        if (socket?.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'chat', text }));
+        }
+    }, []);
+
+    return { connected, publicState, privateState, online, error, sessionLost, chat, send, sendChat };
 };

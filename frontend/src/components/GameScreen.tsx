@@ -2,7 +2,10 @@ import { useMemo, useState } from 'react';
 import type { RoomConnection } from '../net/useRoom';
 import type { GameView, LegalMoves, Player, Position, PrivateState, PublicState } from '../types/game';
 import { Board, type BoardTargets } from './Board';
+import { ChatPanel } from './ChatPanel';
+import { DevCardsPanel } from './DevCardsPanel';
 import { DiscardDialog } from './DiscardDialog';
+import { PlayerTradePanel, TradeOfferPanel } from './PlayerTrade';
 import { ResourceCards } from './ResourceCards';
 import { TradePanel } from './TradePanel';
 import { PLAYER_COLORS } from '../utils/labels';
@@ -18,6 +21,8 @@ const EMPTY_LEGAL: LegalMoves = {
     robber_hexes: [],
     steal_targets: [],
     must_discard: 0,
+    can_buy_dev_card: false,
+    playable_dev_cards: [],
 };
 
 interface GameScreenProps {
@@ -46,6 +51,8 @@ const instruction = (game: GameView, current: Player, isMyTurn: boolean, mustDis
             return 'Move the robber to another tile.';
         case 'steal':
             return 'Choose a player to steal from.';
+        case 'road_building':
+            return `Place a free road (${game.free_roads_left} left).`;
         default:
             return 'Build, trade or end your turn.';
     }
@@ -69,6 +76,8 @@ export const GameScreen = ({ state, mine, room }: GameScreenProps) => {
         switch (game.turn_phase) {
             case 'setup':
                 return { ...NO_TARGETS, settlements: legal.settlements, roads: legal.roads };
+            case 'road_building':
+                return { ...NO_TARGETS, roads: legal.roads };
             case 'move_robber':
                 return { ...NO_TARGETS, robberHexes: legal.robber_hexes };
             case 'main_phase':
@@ -99,6 +108,11 @@ export const GameScreen = ({ state, mine, room }: GameScreenProps) => {
                         ? `${winner.name} won the game!`
                         : instruction(game, current, isMyTurn, legal.must_discard)}
                 </span>
+                {(mine.hidden_points ?? 0) > 0 && (
+                    <span className="muted" title="Your hidden Victory Point cards">
+                        +{mine.hidden_points} hidden VP
+                    </span>
+                )}
                 {game.dice_roll !== null && (
                     <span className="dice" data-testid="dice">Rolled {game.dice_roll}</span>
                 )}
@@ -132,12 +146,18 @@ export const GameScreen = ({ state, mine, room }: GameScreenProps) => {
                             <span className="player-name">
                                 {player.name}
                                 {player.seat === mine.seat && <span className="muted"> (you)</span>}
+                                {player.is_bot && <span className="muted"> (bot)</span>}
                             </span>
                             <span className="player-stats">
                                 <span title="Cards">{player.card_count} {player.card_count === 1 ? 'card' : 'cards'}</span>
+                                <span title="Development cards">{player.dev_card_count} dev</span>
                                 <span title="Road length">
                                     road {player.road_length}
                                     {game.longest_road_holder === player.color && ' ★'}
+                                </span>
+                                <span title="Knights played">
+                                    army {player.knights_played}
+                                    {game.largest_army_holder === player.color && ' ★'}
                                 </span>
                                 <strong title="Victory points" data-testid={`points-${player.seat}`}>
                                     {player.victory_points} VP
@@ -162,6 +182,15 @@ export const GameScreen = ({ state, mine, room }: GameScreenProps) => {
                             ))}
                         </div>
                     </section>
+                )}
+
+                {game.trade_offer && (
+                    <TradeOfferPanel
+                        offer={game.trade_offer}
+                        players={players}
+                        mine={mine}
+                        send={send}
+                    />
                 )}
 
                 {isMyTurn && game.turn_phase === 'roll_dice' && (
@@ -193,12 +222,23 @@ export const GameScreen = ({ state, mine, room }: GameScreenProps) => {
                                 >City</button>
                             </div>
                         </section>
-                        <TradePanel mine={mine} send={send} />
+                        <TradePanel mine={mine} bank={game.bank} send={send} />
+                        {!game.trade_offer && <PlayerTradePanel mine={mine} send={send} />}
                         <button className="primary big" onClick={() => { setBuildMode(null); send('end_turn'); }}>
                             End turn
                         </button>
                     </>
                 )}
+
+                <DevCardsPanel
+                    cards={mine.dev_cards ?? []}
+                    playable={legal.playable_dev_cards}
+                    canBuy={legal.can_buy_dev_card}
+                    deckCount={game.dev_deck_count}
+                    send={send}
+                />
+
+                <ChatPanel messages={room.chat} players={players} onSend={room.sendChat} />
 
                 <section className="panel log" aria-label="Game log">
                     <h2>Log</h2>

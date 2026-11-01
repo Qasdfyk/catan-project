@@ -3,6 +3,7 @@ import type { RoomConnection } from '../net/useRoom';
 import type { PublicState } from '../types/game';
 
 const MIN_PLAYERS = 2;
+const MAX_PLAYERS = 4;
 
 interface LobbyScreenProps {
     state: PublicState;
@@ -39,9 +40,21 @@ export const LobbyScreen = ({ state, seat, room }: LobbyScreenProps) => {
                             {player.name}
                             {player.seat === state.host_seat && <span className="muted"> · host</span>}
                             {player.seat === seat && <span className="muted"> · you</span>}
+                            {player.is_bot && <span className="muted"> · bot</span>}
+                            {isHost && player.is_bot && player.seat === state.players.length - 1 && (
+                                <button
+                                    className="link"
+                                    aria-label={`Remove ${player.name}`}
+                                    onClick={() => room.send('remove_bot', { seat: player.seat })}
+                                >Remove</button>
+                            )}
                         </li>
                     ))}
                 </ul>
+
+                {isHost && state.players.length < MAX_PLAYERS && (
+                    <button onClick={() => room.send('add_bot')}>Add a bot</button>
+                )}
 
                 {isHost ? (
                     <button

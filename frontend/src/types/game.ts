@@ -15,6 +15,7 @@ export type TurnPhase =
   | 'discard'
   | 'move_robber'
   | 'steal'
+  | 'road_building'
   | 'main_phase';
 
 export type RoomStatus = 'lobby' | 'playing' | 'finished';
@@ -51,9 +52,14 @@ export interface Building extends Position {
   type: 'settlement' | 'city';
 }
 
+export type DevCard = 'knight' | 'victory_point' | 'road_building' | 'year_of_plenty' | 'monopoly';
+
+export type Cards = Partial<Record<Resource, number>>;
+
 export interface LobbyPlayer {
   seat: number;
   name: string;
+  is_bot: boolean;
 }
 
 export interface Player extends LobbyPlayer {
@@ -62,6 +68,16 @@ export interface Player extends LobbyPlayer {
   card_count: number;
   road_length: number;
   pending_discard: number;
+  dev_card_count: number;
+  knights_played: number;
+}
+
+export interface TradeOffer {
+  proposer_seat: number;
+  give: Cards;
+  get: Cards;
+  accepted_seats: number[];
+  declined_seats: number[];
 }
 
 export interface GameView {
@@ -75,6 +91,11 @@ export interface GameView {
   roads: Road[];
   settlements: Building[];
   longest_road_holder: PlayerColor | null;
+  largest_army_holder: PlayerColor | null;
+  free_roads_left: number;
+  bank: Record<Resource, number>;
+  dev_deck_count: number;
+  trade_offer: TradeOffer | null;
   log: string[];
   current_seat: number;
   winner_seat: number | null;
@@ -96,12 +117,16 @@ export interface LegalMoves {
   robber_hexes: HexCoords[];
   steal_targets: number[];
   must_discard: number;
+  can_buy_dev_card: boolean;
+  playable_dev_cards: DevCard[];
 }
 
 export interface PrivateState {
   seat: number;
-  resources: Partial<Record<Resource, number>>;
+  resources: Cards;
   trade_rates?: Record<Resource, number>;
+  dev_cards?: DevCard[];
+  hidden_points?: number;
   legal: LegalMoves | null;
 }
 
@@ -115,4 +140,10 @@ export interface RoomSummary {
   room_id: string;
   status: RoomStatus;
   players: { name: string; online: boolean }[];
+}
+
+export interface ChatMessage {
+  seat: number;
+  text: string;
+  sent_at: number;
 }
