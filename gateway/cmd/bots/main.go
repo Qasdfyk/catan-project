@@ -78,7 +78,14 @@ func main() {
 	}
 
 	log.Printf("bots ready, resuming %d seats", len(waiting))
-	for message := range subscription.Channel() {
-		start(message.Payload)
+	// The channel stays open after a signal, so the context has to end the loop
+	messages := subscription.Channel()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case message := <-messages:
+			start(message.Payload)
+		}
 	}
 }
