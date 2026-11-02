@@ -1,0 +1,16 @@
+## backend workers=1
+rooms=100 offered=500/s achieved=185/s p50=476.6ms p99=773.0ms actions=4245 refused=0 failed_rooms=0
+rooms=400 offered=2000/s achieved=162/s p50=669.9ms p99=1092.2ms actions=3735 refused=25 failed_rooms=0
+rooms=800 offered=4000/s achieved=164/s p50=248.9ms p99=407.0ms actions=3769 refused=0 failed_rooms=0
+## backend workers=2
+rooms=100 offered=500/s achieved=347/s p50=265.2ms p99=496.1ms actions=7980 refused=0 failed_rooms=0
+rooms=400 offered=2000/s achieved=255/s p50=882.7ms p99=1333.6ms actions=5862 refused=111 failed_rooms=0
+rooms=800 offered=4000/s achieved=275/s p50=551.5ms p99=827.7ms actions=6319 refused=4 failed_rooms=0
+## backend workers=4
+rooms=100 offered=500/s achieved=493/s p50=14.5ms p99=218.0ms actions=11343 refused=0 failed_rooms=0
+rooms=400 offered=2000/s achieved=384/s p50=861.6ms p99=1448.4ms actions=8841 refused=0 failed_rooms=0
+rooms=800 offered=4000/s achieved=341/s p50=977.7ms p99=1732.5ms actions=7841 refused=25 failed_rooms=0
+## backend workers=8
+rooms=100 offered=500/s achieved=493/s p50=12.2ms p99=234.9ms actions=11341 refused=0 failed_rooms=0
+rooms=400 offered=2000/s achieved=702/s p50=497.7ms p99=1061.1ms actions=16147 refused=0 failed_rooms=0
+rooms=800 offered=4000/s achieved=500/s p50=1329.3ms p99=2398.5ms actions=11492 refused=1 failed_rooms=0

@@ -1,5 +1,6 @@
-// Loadtest measures gateway fan-out against the running stack: it opens real
-// player sessions, then publishes room events through Redis and times delivery.
+// Loadtest measures fan-out: it opens connections, publishes room events through
+// Redis and times their delivery. By default it joins the running stack with real
+// player sessions; -socketio targets benchmarks/socketio_baseline.py instead.
 //
 //	go run ./cmd/loadtest -players 4000 -rate 1 -seconds 15
 package main
@@ -49,6 +50,7 @@ func main() {
 	rate := flag.Float64("rate", 1, "events per room per second")
 	seconds := flag.Int("seconds", 15, "measurement time")
 	size := flag.Int("size", 7700, "event size in bytes")
+	socketio := flag.String("socketio", "", "URL of the python-socketio baseline, instead of the gateway")
 	flag.Parse()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -70,53 +72,84 @@ func main() {
 	var setup sync.WaitGroup
 	limiter := make(chan struct{}, 32)
 	start := time.Now()
+	receive := func(conn *websocket.Conn) {
+		for {
+			_, data, err := conn.Read(ctx)
+			if err != nil {
+				return
+			}
+			if *socketio != "" && string(data) == "2" {
+				conn.Write(ctx, websocket.MessageText, []byte("3"))
+				continue
+			}
+			if !measuring.Load() {
+				continue
+			}
+			if at := bytes.Index(data, []byte(`"sent_at":`)); at >= 0 {
+				tail := bytes.TrimLeft(data[at+10:], " ")
+				end := bytes.IndexAny(tail, ",}")
+				sent, _ := strconv.ParseInt(string(tail[:end]), 10, 64)
+				latency := float64(time.Now().UnixNano()-sent) / 1e6
+				mu.Lock()
+				latencies = append(latencies, latency)
+				mu.Unlock()
+			}
+		}
+	}
+
+	joinGateway := func(room int) {
+		sessions := make([]session, roomSize)
+		if err := post(*api+"/api/rooms", `{"name":"p0"}`, &sessions[0]); err != nil {
+			failed.Add(roomSize)
+			return
+		}
+		roomIDs[room] = sessions[0].RoomID
+		for seat := 1; seat < roomSize; seat++ {
+			url := fmt.Sprintf("%s/api/rooms/%s/join", *api, sessions[0].RoomID)
+			if err := post(url, fmt.Sprintf(`{"name":"p%d"}`, seat), &sessions[seat]); err != nil {
+				failed.Add(1)
+			}
+		}
+		for _, player := range sessions {
+			conn, _, err := websocket.Dial(ctx, *ws, nil)
+			if err != nil {
+				failed.Add(1)
+				continue
+			}
+			conn.SetReadLimit(1 << 20)
+			hello, _ := json.Marshal(map[string]string{"type": "hello", "room_id": player.RoomID, "token": player.Token})
+			conn.Write(ctx, websocket.MessageText, hello)
+			go receive(conn)
+		}
+	}
+
+	joinSocketIO := func(room int) {
+		roomIDs[room] = fmt.Sprintf("room-%d", room)
+		for range roomSize {
+			conn, _, err := websocket.Dial(ctx, *socketio, nil)
+			if err != nil {
+				failed.Add(1)
+				continue
+			}
+			conn.SetReadLimit(1 << 20)
+			conn.Read(ctx)
+			conn.Write(ctx, websocket.MessageText, []byte("40"))
+			conn.Read(ctx)
+			conn.Write(ctx, websocket.MessageText, []byte(fmt.Sprintf(`42["join",%q]`, roomIDs[room])))
+			go receive(conn)
+		}
+	}
+
 	for room := range rooms {
 		setup.Add(1)
 		limiter <- struct{}{}
 		go func() {
 			defer setup.Done()
 			defer func() { <-limiter }()
-			sessions := make([]session, roomSize)
-			if err := post(*api+"/api/rooms", `{"name":"p0"}`, &sessions[0]); err != nil {
-				failed.Add(roomSize)
-				return
-			}
-			roomIDs[room] = sessions[0].RoomID
-			for seat := 1; seat < roomSize; seat++ {
-				url := fmt.Sprintf("%s/api/rooms/%s/join", *api, sessions[0].RoomID)
-				if err := post(url, fmt.Sprintf(`{"name":"p%d"}`, seat), &sessions[seat]); err != nil {
-					failed.Add(1)
-				}
-			}
-			for _, player := range sessions {
-				conn, _, err := websocket.Dial(ctx, *ws, nil)
-				if err != nil {
-					failed.Add(1)
-					continue
-				}
-				conn.SetReadLimit(1 << 20)
-				hello, _ := json.Marshal(map[string]string{"type": "hello", "room_id": player.RoomID, "token": player.Token})
-				conn.Write(ctx, websocket.MessageText, hello)
-				go func() {
-					for {
-						_, data, err := conn.Read(ctx)
-						if err != nil {
-							return
-						}
-						if !measuring.Load() {
-							continue
-						}
-						if at := bytes.Index(data, []byte(`"sent_at":`)); at >= 0 {
-							tail := data[at+10:]
-							end := bytes.IndexAny(tail, ",}")
-							sent, _ := strconv.ParseInt(string(tail[:end]), 10, 64)
-							latency := float64(time.Now().UnixNano()-sent) / 1e6
-							mu.Lock()
-							latencies = append(latencies, latency)
-							mu.Unlock()
-						}
-					}
-				}()
+			if *socketio != "" {
+				joinSocketIO(room)
+			} else {
+				joinGateway(room)
 			}
 		}()
 	}

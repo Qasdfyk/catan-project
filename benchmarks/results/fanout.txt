@@ -1,0 +1,31 @@
+# CPU: 16 threads, 16 GB
+## python-socketio players=400 rate=1/room/s
+events=1500 delivered=6000/6000 p50=1.3ms p99=2.5ms max=3.2ms
+rss=64MB cpu=3.7s
+## gateway players=400 rate=1/room/s
+events=1500 delivered=6000/6000 p50=0.9ms p99=1.7ms max=2.3ms
+rss=44MB cpu=2.1s
+## python-socketio players=4000 rate=0.25/room/s
+events=3750 delivered=15000/15000 p50=1.3ms p99=2.5ms max=6.5ms
+rss=258MB cpu=12.2s
+## gateway players=4000 rate=0.25/room/s
+events=3750 delivered=15000/15000 p50=0.8ms p99=1.8ms max=13.2ms
+rss=237MB cpu=13.4s
+## python-socketio players=4000 rate=1/room/s
+events=14128 delivered=56512/56512 p50=1.0ms p99=24.4ms max=36.4ms
+rss=259MB cpu=19.7s
+## gateway players=4000 rate=1/room/s
+events=14342 delivered=57368/57368 p50=0.6ms p99=1.3ms max=13.2ms
+rss=243MB cpu=19.3s
+## python-socketio players=10000 rate=0.25/room/s
+events=9363 delivered=37452/37452 p50=1.1ms p99=7.0ms max=13.7ms
+rss=589MB cpu=27.2s
+## gateway players=10000 rate=0.25/room/s
+events=9328 delivered=37312/37312 p50=0.7ms p99=1.3ms max=11.9ms
+rss=569MB cpu=31.9s
+## python-socketio players=4000 rate=4/room/s
+events=39568 delivered=12512/158272 p50=1021.6ms p99=1825.7ms max=1845.6ms
+rss=259MB cpu=10.3s
+## gateway players=4000 rate=4/room/s
+events=44145 delivered=176580/176580 p50=0.7ms p99=2.5ms max=14.4ms
+rss=253MB cpu=40.0s

@@ -1,0 +1,2 @@
+## two gateways, players of each room split between them
+rooms=200 offered=1000/s achieved=483/s p50=370.6ms p99=788.0ms actions=11103 refused=0 failed_rooms=0
