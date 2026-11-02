@@ -318,6 +318,26 @@ const checkChat = async (tabs) => {
     await receiver.getByRole('region', { name: 'Chat' }).getByText('Anyone got wood?').waitFor();
 };
 
+// A player leaves for good, a bot keeps the game going, and they come back later.
+const checkBotTakesOver = async (context, tabs, roomUrl) => {
+    const index = tabs.length - 1;
+    const name = NAMES[index];
+    await tabs[index].close();
+
+    const button = tabs[0].getByRole('button', { name: `Let a bot play for ${name}` });
+    await button.waitFor({ timeout: 10000 });
+    await button.click();
+    await tabs[0].locator('.player', { hasText: name }).getByText('(bot)').waitFor();
+
+    const returned = await openTab(context, name);
+    await returned.goto(roomUrl);
+    await returned.getByLabel('Your name').fill(name);
+    await returned.getByRole('button', { name: 'Return', exact: true }).click();
+    await returned.getByText('(you)').waitFor();
+    assert.equal(await tabs[0].locator('.player', { hasText: name }).getByText('(bot)').count(), 0);
+    tabs[index] = returned;
+};
+
 const noteLongestRoad = async (page) => {
     if (await page.locator('.player-stats', { hasText: '★' }).count()) seen.longestRoad += 1;
 };
@@ -356,6 +376,7 @@ const main = async () => {
         if (!returned && seen.turns >= 4) {
             returned = true;
             await checkReturnByName(context, tabs, roomUrl);
+            if (PLAYERS > 1) await checkBotTakesOver(context, tabs, roomUrl);
         }
     }
 

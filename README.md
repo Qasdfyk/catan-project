@@ -106,7 +106,7 @@ random games through serialization and checks the rules after every action.
 the UI, and checks the lobby, errors and returning by name on the way:
 
 ```bash
-cd e2e && npm install && npx playwright install chromium
+cd e2e && npm ci && npx playwright install chromium
 ```
 
 ```bash

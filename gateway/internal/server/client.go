@@ -172,11 +172,12 @@ func (h *Handler) readLoop(ctx context.Context, c *client) {
 			c.enqueueJSON(errorMessage{Type: "error", RequestID: message.RequestID, Message: "Unknown message."})
 			continue
 		}
-		h.Metrics.Actions.Add(1)
 
 		// One action at a time per connection keeps a flooding client from
 		// tying up more than its own share of the backend.
+		started := time.Now()
 		err := h.Backend.Action(ctx, c.roomID, c.token, message.Action, message.Payload)
+		h.Metrics.ObserveAction(time.Since(started))
 		if err == nil {
 			c.enqueueJSON(ackMessage{Type: "ack", RequestID: message.RequestID})
 			continue

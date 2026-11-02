@@ -184,6 +184,13 @@ export const GameScreen = ({ state, mine, room }: GameScreenProps) => {
                                     {player.name}
                                     {player.seat === mine.seat && <span className="muted"> (you)</span>}
                                     {player.is_bot && <span className="muted"> (bot)</span>}
+                                    {!player.is_bot && !room.online.includes(player.seat) && !game.is_game_over && (
+                                        <button
+                                            className="link"
+                                            aria-label={`Let a bot play for ${player.name}`}
+                                            onClick={() => send('replace_with_bot', { seat: player.seat })}
+                                        >Let a bot play</button>
+                                    )}
                                 </span>
                                 <span className="player-stats">
                                     <span title="Resource cards">{player.card_count} {player.card_count === 1 ? 'card' : 'cards'}</span>

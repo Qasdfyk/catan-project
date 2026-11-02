@@ -569,3 +569,26 @@ func TestMetricsExposeCounters(t *testing.T) {
 		}
 	}
 }
+
+func TestActionLatencyHistogramIsCumulative(t *testing.T) {
+	metrics := &Metrics{}
+	metrics.ObserveAction(3 * time.Millisecond)
+	metrics.ObserveAction(30 * time.Millisecond)
+	metrics.ObserveAction(2 * time.Second)
+
+	recorder := httptest.NewRecorder()
+	metrics.Handler(NewHub(newFakePresence(), metrics)).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+
+	body := recorder.Body.String()
+	for _, line := range []string{
+		`catan_gateway_action_seconds_bucket{le="0.005"} 1`,
+		`catan_gateway_action_seconds_bucket{le="0.05"} 2`,
+		`catan_gateway_action_seconds_bucket{le="1"} 2`,
+		`catan_gateway_action_seconds_bucket{le="+Inf"} 3`,
+		`catan_gateway_action_seconds_count 3`,
+	} {
+		if !strings.Contains(body, line) {
+			t.Fatalf("missing %q in:\n%s", line, body)
+		}
+	}
+}

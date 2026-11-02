@@ -4,7 +4,11 @@ import (
 	"fmt"
 	"net/http"
 	"sync/atomic"
+	"time"
 )
+
+// Upper bounds, in seconds, of the action latency histogram.
+var latencyBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1}
 
 // Metrics are counters in the Prometheus text format.
 type Metrics struct {
@@ -13,6 +17,21 @@ type Metrics struct {
 	EventsDelivered atomic.Int64
 	RateLimited     atomic.Int64
 	ClientsDropped  atomic.Int64
+
+	latencyCounts [8]atomic.Int64
+	latencyNanos  atomic.Int64
+}
+
+// ObserveAction records how long the backend took to handle an action.
+func (m *Metrics) ObserveAction(elapsed time.Duration) {
+	m.Actions.Add(1)
+	m.latencyNanos.Add(elapsed.Nanoseconds())
+	for i, bound := range latencyBuckets {
+		if elapsed.Seconds() <= bound {
+			m.latencyCounts[i].Add(1)
+			return
+		}
+	}
 }
 
 func (m *Metrics) Handler(hub *Hub) http.Handler {
@@ -26,5 +45,14 @@ func (m *Metrics) Handler(hub *Hub) http.Handler {
 		fmt.Fprintf(w, "catan_gateway_events_delivered_total %d\n", m.EventsDelivered.Load())
 		fmt.Fprintf(w, "catan_gateway_rate_limited_total %d\n", m.RateLimited.Load())
 		fmt.Fprintf(w, "catan_gateway_clients_dropped_total %d\n", m.ClientsDropped.Load())
+
+		cumulative := int64(0)
+		for i, bound := range latencyBuckets {
+			cumulative += m.latencyCounts[i].Load()
+			fmt.Fprintf(w, "catan_gateway_action_seconds_bucket{le=\"%g\"} %d\n", bound, cumulative)
+		}
+		fmt.Fprintf(w, "catan_gateway_action_seconds_bucket{le=\"+Inf\"} %d\n", m.Actions.Load())
+		fmt.Fprintf(w, "catan_gateway_action_seconds_sum %g\n", float64(m.latencyNanos.Load())/1e9)
+		fmt.Fprintf(w, "catan_gateway_action_seconds_count %d\n", m.Actions.Load())
 	})
 }

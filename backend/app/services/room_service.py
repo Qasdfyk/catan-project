@@ -70,11 +70,17 @@ class RoomService:
 
             seat = self._seat_by_name(room, name)
             if seat is not None:
-                if room["seats"][seat].get("bot"):
+                entry = room["seats"][seat]
+                if entry.get("replaced"):
+                    # The new token also ends the bot, on its next move at the latest
+                    entry.update(token=token, bot=False, replaced=False)
+                    await self._commit(room, await self._load_game(room))
+                    return RoomSession(room_id=room_id, token=token, seat=seat)
+                if entry.get("bot"):
                     raise RoomConflict("That name belongs to a bot.")
                 if seat in await self.redis.online_seats(room_id, len(room["seats"])):
                     raise RoomConflict("That name is taken by a connected player.")
-                room["seats"][seat]["token"] = token
+                entry["token"] = token
                 await self._store(room)
                 return RoomSession(room_id=room_id, token=token, seat=seat)
 
@@ -95,7 +101,7 @@ class RoomService:
             "room_id": room_id,
             "status": room["status"],
             "players": [
-                {"name": entry["name"], "online": seat in online}
+                {"name": entry["name"], "online": seat in online and not entry.get("replaced")}
                 for seat, entry in enumerate(room["seats"])
             ],
         }
@@ -123,6 +129,9 @@ class RoomService:
                 self._add_bot(room, seat)
             elif action_type == "remove_bot":
                 self._remove_bot(room, seat, payload.get("seat"))
+            elif action_type == "replace_with_bot":
+                await self._replace_with_bot(room, game, seat, payload.get("seat"))
+                return
             elif game is None:
                 raise RoomError("The game has not started yet.")
             else:
@@ -161,6 +170,22 @@ class RoomService:
         if target != len(seats) - 1:
             raise RoomError("Only the last seat can be freed.")
         seats.pop()
+
+    async def _replace_with_bot(self, room: Dict[str, Any], game: Optional[GameState], seat: int, target: Any):
+        """Keeps a game going when a player left. They can return by name at any time."""
+        if room["status"] != "playing":
+            raise RoomError("The game is not running.")
+        seats = room["seats"]
+        if not isinstance(target, int) or isinstance(target, bool) or not 0 <= target < len(seats) or target == seat:
+            raise RoomError("Choose another player.")
+        if seats[target].get("bot"):
+            raise RoomError("A bot is already playing there.")
+        if target in await self.redis.online_seats(room["room_id"], len(seats)):
+            raise RoomError("That player is connected.")
+
+        seats[target].update(token=secrets.token_urlsafe(24), bot=True, replaced=True)
+        await self._commit(room, game)
+        await self.redis.summon_bot(room["room_id"], seats[target]["token"])
 
     async def _summon_bots(self, room: Dict[str, Any]):
         for entry in room["seats"]:

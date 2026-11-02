@@ -75,7 +75,7 @@ jobs:
       - name: Install the browser
         working-directory: e2e
         run: |
-          npm install
+          npm ci
           npx playwright install --with-deps chromium
       - name: Play a game against bots
         working-directory: e2e

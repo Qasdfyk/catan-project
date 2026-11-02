@@ -407,3 +407,86 @@ def test_hidden_points_are_revealed_only_when_the_game_ends():
     game.is_game_over = True
 
     assert public_view(room, game)["players"][0]["victory_points"] == 1
+
+
+async def clear_bots():
+    await app.state.redis.redis.delete(ACTIVE_BOTS_KEY)
+
+
+@pytest.mark.asyncio
+async def test_bot_can_take_over_a_seat_of_a_player_who_left(client):
+    host, guest = await started_room(client)
+
+    response = await act(client, host["room_id"], host["token"], "replace_with_bot", {"seat": guest["seat"]})
+
+    assert response.status_code == 200
+    state = await session(client, host["room_id"], host["token"])
+    assert state["public"]["players"][guest["seat"]]["is_bot"] is True
+    assert (await act(client, host["room_id"], guest["token"], "end_turn")).status_code == 401
+    await clear_bots()
+
+
+@pytest.mark.asyncio
+async def test_connected_player_cannot_be_replaced(client):
+    host, guest = await started_room(client)
+    redis = app.state.redis.redis
+    key = f"presence:{host['room_id']}:{guest['seat']}"
+    await redis.set(key, "1", ex=30)
+
+    response = await act(client, host["room_id"], host["token"], "replace_with_bot", {"seat": guest["seat"]})
+
+    await redis.delete(key)
+    assert response.status_code == 400
+    assert "connected" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("target", [0, 9, True, None, "1"])
+async def test_replacing_needs_another_valid_seat(client, target):
+    host, _ = await started_room(client)
+
+    response = await act(client, host["room_id"], host["token"], "replace_with_bot", {"seat": target})
+
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_replacing_needs_a_running_game(client):
+    host = await create_room(client)
+    guest = (await join(client, host["room_id"], "Bob")).json()
+
+    response = await act(client, host["room_id"], host["token"], "replace_with_bot", {"seat": guest["seat"]})
+
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_player_takes_the_seat_back_from_the_bot(client):
+    host, guest = await started_room(client)
+    await act(client, host["room_id"], host["token"], "replace_with_bot", {"seat": guest["seat"]})
+    room = await app.state.redis.get_room(host["room_id"])
+    bot_token = room["seats"][guest["seat"]]["token"]
+
+    returned = await join(client, host["room_id"], "Bob")
+
+    assert returned.status_code == 200
+    assert returned.json()["seat"] == guest["seat"]
+    state = await session(client, host["room_id"], returned.json()["token"])
+    assert state["public"]["players"][guest["seat"]]["is_bot"] is False
+    assert (await act(client, host["room_id"], bot_token, "end_turn")).status_code == 401
+    await clear_bots()
+
+
+@pytest.mark.asyncio
+async def test_seat_held_by_a_bot_shows_as_free_on_the_join_screen(client):
+    host, guest = await started_room(client)
+    await act(client, host["room_id"], host["token"], "replace_with_bot", {"seat": guest["seat"]})
+    redis = app.state.redis.redis
+    key = f"presence:{host['room_id']}:{guest['seat']}"
+    await redis.set(key, "1", ex=30)
+
+    summary = await client.get(f"/api/rooms/{host['room_id']}")
+
+    await redis.delete(key)
+    assert summary.json()["players"][guest["seat"]]["online"] is False
+    await clear_bots()
