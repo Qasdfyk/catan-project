@@ -85,7 +85,7 @@ class GameState:
     dice_roll: Optional[int] = None
     dice: List[int] = field(default_factory=list)
     turn_phase: TurnPhase = TurnPhase.SETUP
-    
+
     # --- SETUP PHASE STATE ---
     # Stores the sequence of player indices for the snake draft (e.g., [0, 1, 1, 0])
     setup_queue: List[int] = field(default_factory=list)
@@ -93,9 +93,9 @@ class GameState:
     setup_waiting_for_road: bool = False
     # The settlement just placed in setup: the road of this setup turn must touch it.
     setup_last_vertex: Optional[Vertex] = None
-    
+
     # Robber position (initially should be on Desert)
-    robber_hex: Optional[Hex] = None 
+    robber_hex: Optional[Hex] = None
 
     # Cards each player still has to give up after a 7
     pending_discards: Dict[PlayerColor, int] = field(default_factory=dict)
@@ -117,7 +117,7 @@ class GameState:
     winner: Optional[Player] = None
 
     log: List[str] = field(default_factory=list)
-    
+
     # State of the board
     roads: Dict[Edge, PlayerColor] = field(default_factory=dict)
     # Maps Vertex -> Building object
@@ -131,7 +131,7 @@ class GameState:
         board = Board.create_standard_game()
         players = []
         colors = list(PlayerColor)
-        
+
         for i, name in enumerate(player_names):
             # Generate UUIDs for players to allow reconnects/identification
             new_player = Player(name=name, color=colors[i], id=str(uuid.uuid4()))
@@ -148,7 +148,7 @@ class GameState:
         random.shuffle(dev_deck)
 
         return GameState(
-            board=board, 
+            board=board,
             players=players,
             dev_deck=dev_deck,
             robber_hex=desert_hex,
@@ -223,7 +223,7 @@ class GameState:
         else:
             self.turn_phase = TurnPhase.MAIN_PHASE
             self.distribute_resources(self.dice_roll)
-        
+
         return self.dice_roll
 
     def _start_robber_sequence(self):
@@ -248,7 +248,7 @@ class GameState:
             # ROBBER LOGIC
             if tile.hex_coords == self.robber_hex:
                 continue
-            
+
             if tile.resource == ResourceType.DESERT:
                 continue
 
@@ -302,7 +302,7 @@ class GameState:
              raise ValueError("Robber must be moved to a new location.")
         if target_hex not in self.board.tiles:
             raise ValueError("Invalid hex coordinates.")
-        
+
         self.robber_hex = target_hex
         self._log(f"{player.name} moved the robber.")
         self.turn_phase = TurnPhase.STEAL if self.steal_victims(player) else self.return_phase
@@ -325,10 +325,10 @@ class GameState:
 
     def steal_resource(self, thief: Player, victim: Player):
         self._verify_turn(thief, TurnPhase.STEAL)
-        
+
         if self.robber_hex is None:
             raise ValueError("Robber is not placed on the board.")
-        
+
         if thief.color == victim.color:
             raise ValueError("Cannot steal from yourself.")
 
@@ -343,14 +343,14 @@ class GameState:
         pool = []
         for res, count in victim.resources.items():
             pool.extend([res] * count)
-        
+
         stolen_res = random.choice(pool)
-        
+
         victim.remove_resource(stolen_res, 1)
         thief.add_resource(stolen_res, 1)
         self._log(f"{thief.name} stole a card from {victim.name}.")
         self.turn_phase = self.return_phase
-        
+
         return stolen_res
 
     # --- Building Logic ---
@@ -381,7 +381,7 @@ class GameState:
 
         if not free:
             player.deduct_resources(ROAD_COST)
-        
+
         self.roads[canonical_edge] = player.color
         self._log(f"{player.name} built a road.")
         self._update_longest_road()
@@ -440,11 +440,11 @@ class GameState:
 
         if not free:
             player.deduct_resources(SETTLEMENT_COST)
-        
+
         self.settlements[canonical_vertex] = Building(player.color, BuildingType.SETTLEMENT)
         player.victory_points += 1
         self._log(f"{player.name} built a settlement.")
-        
+
         # SETUP PHASE: Handle State Transition & Initial Resources
         if self.turn_phase == TurnPhase.SETUP:
             # Give resources if this is the SECOND settlement (Snake Draft Rule)
@@ -452,7 +452,7 @@ class GameState:
             player_buildings = [b for b in self.settlements.values() if b.owner == player.color]
             if len(player_buildings) == 2:
                 self._give_initial_resources(player, canonical_vertex)
-            
+
             # Now wait for road
             self.setup_waiting_for_road = True
             self.setup_last_vertex = canonical_vertex
@@ -499,7 +499,7 @@ class GameState:
 
         player.deduct_resources(CITY_COST)
         building.type = BuildingType.CITY
-        player.victory_points += 1 
+        player.victory_points += 1
         self._log(f"{player.name} built a city.")
         self._check_victory()
 
@@ -530,12 +530,12 @@ class GameState:
             raise ValueError("You must trade for a different resource.")
 
         cost = self.trade_rate(player, give)
-            
+
         if player.resources[give] < cost:
             raise ValueError(f"Not enough {give.value}. Need {cost} (Rate {cost}:1).")
         if self.bank_count(get) == 0:
             raise ValueError(f"The bank has no {get.value} left.")
-        
+
         player.remove_resource(give, cost)
         player.add_resource(get, 1)
         self._log(f"{player.name} traded {cost} {give.value} for 1 {get.value}.")
@@ -899,7 +899,7 @@ class GameState:
             vertex.owner.neighbor(vertex.direction),
             vertex.owner.neighbor((vertex.direction - 1) % 6)
         ]
-        
+
         for h in hexes:
             tile = self.board.get_tile(h)
             if tile and tile.resource != ResourceType.DESERT and self.bank_count(tile.resource) > 0:

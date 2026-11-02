@@ -1,10 +1,9 @@
-import pytest
 from collections import Counter
 from app.models.board import Board, ResourceType, Tile
 from app.models.hex_lib import Hex
 
 class TestBoardGenerator:
-    
+
     def test_standard_board_size(self):
         """Standard board (radius 2) should have 19 tiles."""
         board = Board.create_standard_game()
@@ -32,10 +31,10 @@ class TestBoardGenerator:
 
         # Total numbered tiles should be 18
         assert len(numbers) == 18
-        
+
         # 7 should not exist
         assert 7 not in counts
-        
+
         # Check specific frequencies (examples)
         assert counts[2] == 1
         assert counts[12] == 1
@@ -46,7 +45,7 @@ class TestBoardGenerator:
         """Desert tile must verify number is None."""
         board = Board.create_standard_game()
         desert_tiles = [t for t in board.tiles.values() if t.resource == ResourceType.DESERT]
-        
+
         assert len(desert_tiles) == 1
         assert desert_tiles[0].number is None
 
@@ -54,7 +53,7 @@ class TestBoardGenerator:
         """Test verifying we can retrieve a tile by coordinate."""
         board = Board.create_standard_game()
         center = Hex(0, 0, 0)
-        
+
         tile = board.get_tile(center)
         assert tile is not None
         assert isinstance(tile, Tile)
@@ -64,7 +63,7 @@ class TestBoardGenerator:
         """Test lookup for a hex that doesn't exist."""
         board = Board.create_standard_game()
         far_away = Hex(10, -10, 0)
-        
+
         assert board.get_tile(far_away) is None
 
     def test_red_numbers_never_touch(self):

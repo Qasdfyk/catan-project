@@ -56,10 +56,10 @@ class Board:
         - Randomly assigns resources and number tokens.
         """
         board = Board()
-        
+
         # 1. Generate Coordinates for Radius 2 (Standard map)
         hexes = Board._generate_hex_grid(radius=2)
-        
+
         # 2. Define Standard Resource Distribution
         # 4 Wood, 4 Sheep, 4 Wheat, 3 Brick, 3 Ore, 1 Desert
         resources = (
@@ -70,7 +70,7 @@ class Board:
             [ResourceType.ORE] * 3 +
             [ResourceType.DESERT] * 1
         )
-        
+
         # 3. Define Standard Number Tokens (probabilities)
         # 2-12 (skipping 7). Distribution tailored for 19 tiles minus 1 desert = 18 tokens.
         # 1x2, 2x3, 2x4, 2x5, 2x6, 2x8, 2x9, 2x10, 2x11, 1x12
@@ -91,7 +91,7 @@ class Board:
     def _assign_tiles(hexes: List[Hex], resources: List[ResourceType], numbers: List[int]) -> Dict[Hex, Tile]:
         tiles = {}
         remaining_numbers = iter(numbers)
-        for h, res in zip(hexes, resources):
+        for h, res in zip(hexes, resources, strict=True):
             num = None if res == ResourceType.DESERT else next(remaining_numbers)
             tiles[h] = Tile(hex_coords=h, resource=res, number=num)
         return tiles

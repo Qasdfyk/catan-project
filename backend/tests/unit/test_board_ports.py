@@ -31,7 +31,7 @@ def test_coast_is_a_closed_walk_of_thirty_edges():
     coast = Board._coastal_edges_in_order(board)
 
     assert len(coast) == 30
-    for first, second in zip(coast, coast[1:] + coast[:1]):
+    for first, second in zip(coast, coast[1:] + coast[:1], strict=True):
         assert set(first.get_vertices()) & set(second.get_vertices())
 
 

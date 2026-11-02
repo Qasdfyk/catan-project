@@ -4,7 +4,7 @@ which a game state changes (load, validate, save, publish) under a room lock.
 """
 import secrets
 import uuid
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from app.models.game import GameState
 from app.schemas.game_schemas import RoomSession

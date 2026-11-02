@@ -52,6 +52,11 @@ services:
         condition: service_healthy
     networks:
       - catan_net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   # --- SERVICE 4: BOTS (fill empty seats, Go) ---
   bots:
@@ -59,11 +64,14 @@ services:
       context: ./gateway
     container_name: catan_bots
     command: ["bots"]
+    restart: unless-stopped
     environment:
       - REDIS_URL=redis://redis:6379/0
       - GATEWAY_URL=ws://gateway:8080/ws
+      - BOT_DELAY_MS=${BOT_DELAY_MS:-900}
     depends_on:
-      - gateway
+      gateway:
+        condition: service_healthy
     networks:
       - catan_net
 
@@ -75,8 +83,10 @@ services:
     ports:
       - "3000:80" # The game: http://localhost:3000
     depends_on:
-      - backend
-      - gateway
+      backend:
+        condition: service_healthy
+      gateway:
+        condition: service_healthy
     networks:
       - catan_net
 

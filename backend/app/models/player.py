@@ -34,9 +34,9 @@ class Player:
     # Bought this turn, so not playable yet
     new_dev_cards: List[DevCard] = field(default_factory=list)
     knights_played: int = 0
-    
+
     # Internal identifier; clients address players by seat number
-    id: str = field(default="") 
+    id: str = field(default="")
 
     def add_resource(self, resource: ResourceType, amount: int = 1):
         """Adds resources to the player's hand."""
@@ -44,7 +44,7 @@ class Player:
 
     def remove_resource(self, resource: ResourceType, amount: int = 1):
         """
-        Removes resources. 
+        Removes resources.
         Raises ValueError if player doesn't have enough.
         """
         if self.resources[resource] < amount:
@@ -69,11 +69,11 @@ class Player:
 
     def deduct_resources(self, cost: Dict[ResourceType, int]):
         """
-        Deducts resources for a cost. 
+        Deducts resources for a cost.
         Raises ValueError if not affordable (atomic operation check needed in caller or here).
         """
         if not self.has_resources(cost):
             raise ValueError("Insufficient resources to pay cost.")
-        
+
         for res, amount in cost.items():
             self.remove_resource(res, amount)

@@ -1,4 +1,3 @@
-import pytest
 from app.models.hex_lib import Hex, Vertex, Edge
 
 class TestHexCore:
@@ -19,7 +18,7 @@ class TestHexCore:
 class TestVertexCanonicalization:
     def test_canonical_vertex_equality(self):
         h_center = Hex(0, 0, 0)
-        
+
         # V0 (Top-Right/East corner) touches:
         # Neighbor 5 (NE) and Neighbor 0 (E)
         h_ne = h_center.neighbor(5)
@@ -27,12 +26,12 @@ class TestVertexCanonicalization:
 
         # 1. Center V0
         v1 = Vertex(h_center, 0).get_canonical()
-        
+
         # 2. Neighbor NE (V2 - Bottom)
         # Let's verify via lookup table in hex_lib logic:
         # V0 -> (5, 2) and (0, 4)
         v2 = Vertex(h_ne, 2).get_canonical()
-        
+
         # 3. Neighbor E (V4 - Top-Left)
         v3 = Vertex(h_e, 4).get_canonical()
 
@@ -43,21 +42,21 @@ class TestVertexCanonicalization:
     def test_vertex_set_usage(self):
         h_center = Hex(0, 0, 0)
         h_right = h_center.neighbor(0)
-        
+
         # V0 touches Neighbor 0 at V4
         v1 = Vertex(h_center, 0).get_canonical()
         v2 = Vertex(h_right, 4).get_canonical()
-        
+
         vertex_set = set()
         vertex_set.add(v1)
         vertex_set.add(v2)
-        
+
         assert len(vertex_set) == 1
 
 class TestEdgeCanonicalization:
     def test_canonical_edge_equality(self):
         h1 = Hex(0, 0, 0)
-        h2 = h1.neighbor(0) 
+        h2 = h1.neighbor(0)
 
         # Edge 0 of h1 touches Edge 3 of h2
         e1 = Edge(h1, 0).get_canonical()

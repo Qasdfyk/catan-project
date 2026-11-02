@@ -1,7 +1,7 @@
 """Endpoints for the Go gateway only."""
 import secrets
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException
 
 from app.core.config import settings
 from app.api.routes import get_rooms

@@ -5,7 +5,7 @@ from app.models.player import DevCard, Player, PlayerColor
 from app.models.hex_lib import Hex, Vertex, Edge
 
 class GameSerializer:
-    
+
     @staticmethod
     def game_to_dict(game: GameState) -> Dict[str, Any]:
         return {
@@ -14,27 +14,27 @@ class GameSerializer:
             "turn_phase": game.turn_phase.value,
             "dice_roll": game.dice_roll,
             "dice": game.dice,
-            
+
             "setup_queue": game.setup_queue,
             "setup_waiting_for_road": game.setup_waiting_for_road,
             "setup_last_vertex": GameSerializer._vertex_to_dict(game.setup_last_vertex) if game.setup_last_vertex else None,
-            
+
             "pending_discards": {c.value: n for c, n in game.pending_discards.items()},
             "longest_road_holder": game.longest_road_holder.value if game.longest_road_holder else None,
             "road_lengths": {c.value: n for c, n in game.road_lengths.items()},
             "log": game.log,
-            
+
             "trade_offer": GameSerializer._offer_to_dict(game.trade_offer) if game.trade_offer else None,
             "return_phase": game.return_phase.value,
             "free_roads_left": game.free_roads_left,
             "dev_deck": [c.value for c in game.dev_deck],
             "dev_card_played": game.dev_card_played,
             "largest_army_holder": game.largest_army_holder.value if game.largest_army_holder else None,
-            
+
             "robber_hex": GameSerializer._hex_to_dict(game.robber_hex) if game.robber_hex else None,
             "is_game_over": game.is_game_over,
             "winner_name": game.winner.name if game.winner else None,
-            
+
             "board_tiles": GameSerializer._tiles_to_list(game.board.tiles),
             "ports": GameSerializer._ports_to_list(game.board.ports),
             "roads": GameSerializer._roads_to_list(game.roads),
@@ -50,7 +50,7 @@ class GameSerializer:
         players = [GameSerializer._dict_to_player(p) for p in data["players"]]
 
         game = GameState(
-            board=board, 
+            board=board,
             players=players,
             current_turn_index=data["current_turn_index"],
             dice_roll=data["dice_roll"],
@@ -58,16 +58,16 @@ class GameSerializer:
             turn_phase=TurnPhase(data["turn_phase"]),
             robber_hex=GameSerializer._dict_to_hex(data["robber_hex"]) if data["robber_hex"] else None,
             is_game_over=data["is_game_over"],
-            
+
             setup_queue=data.get("setup_queue", []),
             setup_waiting_for_road=data.get("setup_waiting_for_road", False),
             setup_last_vertex=GameSerializer._dict_to_vertex(data["setup_last_vertex"]) if data.get("setup_last_vertex") else None,
-            
+
             pending_discards={PlayerColor(c): n for c, n in data.get("pending_discards", {}).items()},
             longest_road_holder=PlayerColor(data["longest_road_holder"]) if data.get("longest_road_holder") else None,
             road_lengths={PlayerColor(c): n for c, n in data.get("road_lengths", {}).items()},
             log=data.get("log", []),
-            
+
             trade_offer=GameSerializer._dict_to_offer(data["trade_offer"]) if data.get("trade_offer") else None,
             return_phase=TurnPhase(data.get("return_phase", TurnPhase.MAIN_PHASE)),
             free_roads_left=data.get("free_roads_left", 0),
@@ -75,10 +75,10 @@ class GameSerializer:
             dev_card_played=data.get("dev_card_played", False),
             largest_army_holder=PlayerColor(data["largest_army_holder"]) if data.get("largest_army_holder") else None
         )
-        
+
         game.roads = GameSerializer._list_to_roads(data["roads"])
         game.settlements = GameSerializer._list_to_settlements(data["settlements"])
-        
+
         if data["winner_name"]:
             game.winner = next((p for p in players if p.name == data["winner_name"]), None)
 

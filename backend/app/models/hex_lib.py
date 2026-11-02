@@ -88,10 +88,10 @@ class Vertex:
         """
         # 1. Edge d (Forward on Self)
         e1 = Edge(self.owner, self.direction).get_canonical()
-        
+
         # 2. Edge d-1 (Backward on Self)
         e2 = Edge(self.owner, (self.direction - 1) % 6).get_canonical()
-        
+
         # 3. Spoke Edge (Radiating outward)
         # Lookup table for the 3rd edge based on geometry
         lookup_spoke = {
@@ -102,11 +102,11 @@ class Vertex:
             4: (3, 5),
             5: (4, 0)
         }
-        
+
         neigh_dir, neigh_edge_idx = lookup_spoke[self.direction % 6]
         n_hex = self.owner.neighbor(neigh_dir)
         e3 = Edge(n_hex, neigh_edge_idx).get_canonical()
-        
+
         return [e1, e2, e3]
 
     def get_touching_hexes(self) -> List[Hex]:
@@ -130,7 +130,8 @@ class Vertex:
     def __repr__(self):
         return f"Vertex({self.owner.q},{self.owner.r},{self.owner.s}|{self.direction})"
     def __eq__(self, other):
-        if not isinstance(other, Vertex): return False
+        if not isinstance(other, Vertex):
+            return False
         c1 = self.get_canonical()
         c2 = other.get_canonical()
         return (c1.owner == c2.owner) and (c1.direction == c2.direction)
@@ -168,11 +169,12 @@ class Edge:
                 if e.get_canonical() != self.get_canonical():
                     result.add(e.get_canonical())
         return list(result)
-        
+
     def __repr__(self):
         return f"Edge({self.owner.q},{self.owner.r},{self.owner.s}|{self.direction})"
     def __eq__(self, other):
-        if not isinstance(other, Edge): return False
+        if not isinstance(other, Edge):
+            return False
         c1 = self.get_canonical()
         c2 = other.get_canonical()
         return (c1.owner == c2.owner) and (c1.direction == c2.direction)
