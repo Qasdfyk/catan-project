@@ -36,3 +36,4 @@ e2e/screenshots/
 .vscode/
 .DS_Store
 Thumbs.db
+.coverage

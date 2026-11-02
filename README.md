@@ -1,10 +1,15 @@
 # Catan
 
+[![CI](https://github.com/Qasdfyk/catan-project/actions/workflows/ci.yml/badge.svg)](https://github.com/Qasdfyk/catan-project/actions/workflows/ci.yml)
+
 Catan for 2–4 players in the browser, with friends over an invite link or against bots.
 The full base game: setup, dice, building, the robber, development cards, bank, port and
 player trade, Longest Road, Largest Army and a win at 10 points, plus chat.
 
+If a player leaves, anyone can hand their seat to a bot, and they can take it back by name.
 Shortcuts in the game: `R` rolls, `E` ends the turn, `Esc` leaves build mode.
+
+![A game in progress](docs/images/game.png)
 
 ## Running
 
@@ -17,26 +22,21 @@ docker compose up --build
 The game is at <http://localhost:3000>. Create a room and open the invite link in another
 tab or browser. Set `INTERNAL_API_KEY` in the environment outside of local play.
 
-Without Docker you need Python 3.12, Go, Node and a Redis server on `localhost:6379`:
+Without Docker you need Python 3.12, Go, Node and `redis-server`:
 
 ```bash
-cd backend && python -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/uvicorn app.main:app --port 8000 --workers 2
+cd backend && python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 ```
 
 ```bash
-cd gateway && go run ./cmd/gateway
+cd frontend && npm ci
 ```
 
 ```bash
-cd gateway && go run ./cmd/bots
+scripts/dev.sh
 ```
 
-```bash
-cd frontend && npm ci && npm run dev
-```
-
-The game is then at <http://localhost:5173>.
+The game is then at <http://localhost:5173>, and `Ctrl+C` stops everything.
 
 ## Architecture
 
@@ -65,39 +65,40 @@ second per connection, and counters at `/metrics` in the Prometheus format.
 
 ### Why Go is the gateway and the bots
 
-The rules are not a bottleneck: one action costs about 3 ms in Python, and a turn-based game
-produces little traffic per room. Fan-out over many connections is what a single Python
-thread cannot keep up with, so that is the part in Go. A few players will not notice any
-difference; it matters at thousands of connections.
+The rules are not the bottleneck, and a turn-based game produces little traffic, so they stay
+in Python. Go holds the connections, because that part has to survive a few slow clients and
+lets backend workers scale without sticky sessions. Bots are many idle connections, which
+goroutines handle cheaply.
 
-One process, 7.7 kB message to a room of 4, same load generator:
+At the size of a friends' game Go changes nothing you could notice. The measured difference
+starts at thousands of messages per second, with the numbers below from
+[docs/benchmarks.md](docs/benchmarks.md):
 
-| Load | python-socketio | Go hub |
-| --- | --- | --- |
-| 400 connections, 100 msg/s | p50 1.1 ms, p99 2.1 ms | p50 0.7 ms, p99 1.5 ms |
-| 4,000 connections, 250 msg/s | p50 1.2 ms, p99 2.6 ms, 13.3 s CPU | p50 0.7 ms, p99 1.5 ms, 5.1 s CPU |
-| 4,000 connections, 1,000 msg/s | p50 766 ms, p99 4.2 s, 10% undelivered in the window | p50 0.5 ms, p99 3.5 ms, all delivered |
-| 10,000 connections, 625 msg/s | p50 1.4 ms, p99 1.8 s, 36 s CPU | p50 0.4 ms, p99 0.9 ms, 7.5 s CPU |
+| Measured on one 16-thread machine | Result |
+| --- | --- |
+| Whole stack, 1 → 8 backend workers | 185 → 702 actions/s |
+| Action to all players at 500 actions/s, 4 workers | p50 14.5 ms, p99 218 ms |
+| Fan-out at 4,000 messages/s, 4,000 connections | p99 1.3 ms, python-socketio 24.4 ms |
+| Fan-out limit | about 11,800 messages/s, all delivered; python-socketio delivered 8% at that load |
+| Rooms split between two gateways | 483 actions/s, no failed rooms |
 
-Bots fit Go for the same reason: they are many idle connections. 600 of them, waiting for
-their turn, took about 28 MB of memory in one process.
-
-The finished stack delivers an action to both players in 4.5 ms (p50). `gateway/cmd/loadtest`
-repeats the gateway side of this measurement against a running stack.
+The trade-offs and known limits are in [docs/design.md](docs/design.md).
 
 ## Tests
 
 ```bash
-cd backend && .venv/bin/python -m pytest
+cd backend && .venv/bin/ruff check . && .venv/bin/python -m pytest --cov=app
 ```
 
 ```bash
-cd gateway && go test ./...
+cd gateway && go test -race ./...
 ```
 
 ```bash
 cd frontend && npm test && npm run lint && npm run build
 ```
+
+CI runs all of these, then builds the compose stack and plays a game in a browser.
 
 Backend integration tests need Redis on `localhost:6379`. `tests/simulation` plays whole
 random games through serialization and checks the rules after every action.
