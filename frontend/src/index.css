@@ -166,6 +166,8 @@ label.check input { width: auto; margin: 0; flex: none; }
 .panel { padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
 .panel.notice { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 
+.rules { margin: -4px 0 6px; font-size: 12px; }
+
 .player { display: flex; align-items: center; gap: 6px; padding: 5px 6px; border-radius: 6px; font-size: 14px; }
 .player.active { background: #dcebf8; }
 .player-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

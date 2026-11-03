@@ -12,6 +12,7 @@ import { ResourceCards } from './ResourceCards';
 import { TradePanel } from './TradePanel';
 import { WinnerDialog } from './WinnerDialog';
 import { PLAYER_COLORS } from '../utils/labels';
+import { settingsSummary } from '../utils/settings';
 
 type BuildMode = 'settlement' | 'road' | 'city' | null;
 
@@ -172,6 +173,7 @@ export const GameScreen = ({ state, mine, room }: GameScreenProps) => {
             <aside className="side">
                 <section className="panel" aria-label="Players">
                     <h2>Players</h2>
+                    <p className="muted rules" title="Rules of this game">{settingsSummary(state.settings)}</p>
                     {players.map((player) => (
                         <div
                             key={player.seat}
