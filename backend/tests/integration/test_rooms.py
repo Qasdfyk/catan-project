@@ -8,6 +8,8 @@ import pytest_asyncio
 from app.core.config import settings
 from app.models.game import GameState
 from app.models.player import DevCard
+from app.models.settings import GameSettings
+from app.services.serializer import GameSerializer
 from app.services.views import public_view
 from app.main import app
 from app.services.redis_service import ACTIVE_BOTS_KEY, BOTS_CHANNEL, EVENTS_CHANNEL, RedisService
@@ -490,3 +492,90 @@ async def test_seat_held_by_a_bot_shows_as_free_on_the_join_screen(client):
     await redis.delete(key)
     assert summary.json()["players"][guest["seat"]]["online"] is False
     await clear_bots()
+
+
+@pytest.mark.asyncio
+async def test_new_room_has_the_standard_settings(client):
+    host = await create_room(client)
+
+    state = await session(client, host["room_id"], host["token"])
+
+    assert state["public"]["settings"] == GameSettings().to_dict()
+
+
+@pytest.mark.asyncio
+async def test_host_changes_settings_one_key_at_a_time(client):
+    host = await create_room(client)
+
+    await act(client, host["room_id"], host["token"], "update_settings", {"victory_points": 12})
+    response = await act(client, host["room_id"], host["token"], "update_settings", {"friendly_robber": True})
+
+    assert response.status_code == 200
+    settings = (await session(client, host["room_id"], host["token"]))["public"]["settings"]
+    assert settings == {**GameSettings().to_dict(), "victory_points": 12, "friendly_robber": True}
+
+
+@pytest.mark.asyncio
+async def test_guest_cannot_change_settings(client):
+    host = await create_room(client)
+    guest = (await join(client, host["room_id"], "Bob")).json()
+
+    response = await act(client, host["room_id"], guest["token"], "update_settings", {"victory_points": 6})
+
+    assert response.status_code == 400
+    assert "host" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload", [{"victory_points": 20}, {"desert": "edge"}, {"speed": 2}])
+async def test_invalid_settings_change_nothing(client, payload):
+    host = await create_room(client)
+    before = await session(client, host["room_id"], host["token"])
+
+    response = await act(client, host["room_id"], host["token"], "update_settings", payload)
+
+    assert response.status_code == 400
+    assert await session(client, host["room_id"], host["token"]) == before
+
+
+@pytest.mark.asyncio
+async def test_settings_are_frozen_once_the_game_starts(client):
+    host, _ = await started_room(client)
+
+    response = await act(client, host["room_id"], host["token"], "update_settings", {"victory_points": 6})
+
+    assert response.status_code == 400
+    assert "already started" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_settings_reach_the_started_game(client):
+    host = await create_room(client)
+    await join(client, host["room_id"], "Bob")
+    chosen = {"victory_points": 8, "discard_limit": 9, "desert": "center",
+              "friendly_robber": True, "turn_seconds": 120}
+    await act(client, host["room_id"], host["token"], "update_settings", chosen)
+
+    await act(client, host["room_id"], host["token"], "start_game")
+
+    state = await session(client, host["room_id"], host["token"])
+    assert state["public"]["settings"] == chosen
+    assert state["public"]["game"]["robber_hex"] == CENTER
+    game = GameSerializer.dict_to_game(await app.state.redis.get_game_state(host["room_id"]))
+    assert game.settings == GameSettings(**chosen)
+
+
+@pytest.mark.asyncio
+async def test_rooms_saved_before_settings_existed_still_start(client):
+    host = await create_room(client)
+    await join(client, host["room_id"], "Bob")
+    room = await app.state.redis.get_room(host["room_id"])
+    del room["settings"]
+    await app.state.redis.save_room(host["room_id"], room)
+
+    await act(client, host["room_id"], host["token"], "update_settings", {"discard_limit": 5})
+    response = await act(client, host["room_id"], host["token"], "start_game")
+
+    assert response.status_code == 200
+    settings = (await session(client, host["room_id"], host["token"]))["public"]["settings"]
+    assert settings == {**GameSettings().to_dict(), "discard_limit": 5}

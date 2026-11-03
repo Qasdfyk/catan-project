@@ -6,6 +6,11 @@ Catan for 2–4 players in the browser, with friends over an invite link or agai
 The full base game: setup, dice, building, the robber, development cards, bank, port and
 player trade, Longest Road, Largest Army and a win at 10 points, plus chat.
 
+The host can change the rules in the lobby: points to win (6–15), the hand limit on a 7,
+the desert in the centre and a friendly robber that spares players with 2 points or fewer.
+One click sets the rules we recommend for two players. The server checks every setting,
+and they cannot change once the game has started.
+
 If a player leaves, anyone can hand their seat to a bot, and they can take it back by name.
 Shortcuts in the game: `R` rolls, `E` ends the turn, `Esc` leaves build mode.
 
