@@ -1,10 +1,10 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional
-from app.models.hex_lib import Hex, Vertex
+from typing import Dict, List, Optional, Set
+from app.models.hex_lib import Edge, Hex, Vertex
 import random
 
-from app.models.hex_lib import Hex
+RED_NUMBERS = (6, 8)
 
 class ResourceType(str, Enum):
     """Available resource types in the game."""
@@ -56,10 +56,10 @@ class Board:
         - Randomly assigns resources and number tokens.
         """
         board = Board()
-        
+
         # 1. Generate Coordinates for Radius 2 (Standard map)
         hexes = Board._generate_hex_grid(radius=2)
-        
+
         # 2. Define Standard Resource Distribution
         # 4 Wood, 4 Sheep, 4 Wheat, 3 Brick, 3 Ore, 1 Desert
         resources = (
@@ -70,44 +70,93 @@ class Board:
             [ResourceType.ORE] * 3 +
             [ResourceType.DESERT] * 1
         )
-        
+
         # 3. Define Standard Number Tokens (probabilities)
         # 2-12 (skipping 7). Distribution tailored for 19 tiles minus 1 desert = 18 tokens.
         # 1x2, 2x3, 2x4, 2x5, 2x6, 2x8, 2x9, 2x10, 2x11, 1x12
         numbers = [2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12]
 
-        # 4. Shuffle resources and numbers
-        random.shuffle(resources)
-        random.shuffle(numbers)
+        # 4. Shuffle until the most productive numbers are spread over the island
+        while True:
+            random.shuffle(resources)
+            random.shuffle(numbers)
+            board.tiles = Board._assign_tiles(hexes, resources, numbers)
+            if not Board._red_numbers_touch(board):
+                break
 
-        # 5. Assign to tiles
-        # Note: In a real game, there are rules preventing 6s and 8s from touching.
-        # For this iteration, we use pure random assignment.
-        number_idx = 0
-        
-        for i, h in enumerate(hexes):
-            res = resources[i]
-            num = None
-            
-            if res != ResourceType.DESERT:
-                num = numbers[number_idx]
-                number_idx += 1
-            
-            board.tiles[h] = Tile(hex_coords=h, resource=res, number=num)
-        
-        # Port 3:1
-        h1 = Hex(0, -2, 2)
-        v1 = Vertex(h1, 0).get_canonical()
-        v2 = Vertex(h1, 1).get_canonical()
-        board.ports.append(Port(PortType.GENERIC_3_1, [v1, v2]))
-
-        # Port Wood 2:1
-        h2 = Hex(1, -2, 1)
-        v3 = Vertex(h2, 0).get_canonical()
-        v4 = Vertex(h2, 1).get_canonical()
-        board.ports.append(Port(PortType.WOOD_2_1, [v3, v4]))
-        #TODO - add more ports like in real catan
+        board.ports = Board._create_ports(board)
         return board
+
+    @staticmethod
+    def _assign_tiles(hexes: List[Hex], resources: List[ResourceType], numbers: List[int]) -> Dict[Hex, Tile]:
+        tiles = {}
+        remaining_numbers = iter(numbers)
+        for h, res in zip(hexes, resources, strict=True):
+            num = None if res == ResourceType.DESERT else next(remaining_numbers)
+            tiles[h] = Tile(hex_coords=h, resource=res, number=num)
+        return tiles
+
+    @staticmethod
+    def _red_numbers_touch(board: 'Board') -> bool:
+        """6s and 8s are the most likely rolls, so they must not be neighbors."""
+        for h, tile in board.tiles.items():
+            if tile.number not in RED_NUMBERS:
+                continue
+            for direction in range(6):
+                neighbor = board.tiles.get(h.neighbor(direction))
+                if neighbor and neighbor.number in RED_NUMBERS:
+                    return True
+        return False
+
+    def is_on_board(self, position: Vertex | Edge) -> bool:
+        """A vertex or edge exists only if it touches at least one tile."""
+        return any(h in self.tiles for h in position.get_touching_hexes())
+
+    def vertices(self) -> Set[Vertex]:
+        return {Vertex(h, d).get_canonical() for h in self.tiles for d in range(6)}
+
+    def edges(self) -> Set[Edge]:
+        return {Edge(h, d).get_canonical() for h in self.tiles for d in range(6)}
+
+    @staticmethod
+    def _create_ports(board: 'Board') -> List[Port]:
+        """
+        Places the 9 standard ports (4x 3:1, one 2:1 per resource) on the coast.
+        Walking around the 30 coastal edges, ports repeat every 3, 3 and 4 edges,
+        which leaves the same gaps as the printed frame of the board.
+        """
+        port_types = [PortType.GENERIC_3_1] * 4 + [
+            PortType.WOOD_2_1, PortType.BRICK_2_1, PortType.SHEEP_2_1,
+            PortType.WHEAT_2_1, PortType.ORE_2_1,
+        ]
+        random.shuffle(port_types)
+
+        coast = Board._coastal_edges_in_order(board)
+        ports = []
+        index = 0
+        for i, port_type in enumerate(port_types):
+            ports.append(Port(port_type, coast[index].get_vertices()))
+            index += 4 if i % 3 == 2 else 3
+        return ports
+
+    @staticmethod
+    def _coastal_edges_in_order(board: 'Board') -> List[Edge]:
+        """Returns the edges touching exactly one tile, as a closed walk along the coast."""
+        remaining = {
+            e for e in board.edges()
+            if sum(h in board.tiles for h in e.get_touching_hexes()) == 1
+        }
+        current = min(remaining, key=lambda e: (e.owner.q, e.owner.r, e.direction))
+        remaining.discard(current)
+        vertex = current.get_vertices()[1]
+        walk = [current]
+        while remaining:
+            current = next(e for e in vertex.get_touching_edges() if e in remaining)
+            remaining.discard(current)
+            walk.append(current)
+            first, second = current.get_vertices()
+            vertex = second if first == vertex else first
+        return walk
 
     @staticmethod
     def _generate_hex_grid(radius: int) -> List[Hex]:

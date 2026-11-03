@@ -13,7 +13,7 @@ async def test_setup_state_persistence():
     # 1. Initialize Game
     game = GameState.create_new_game(["Alice", "Bob"])
     alice = game.players[0]
-    
+
     assert game.turn_phase == TurnPhase.SETUP
     assert game.setup_waiting_for_road is False
     assert len(game.setup_queue) > 0
@@ -21,7 +21,7 @@ async def test_setup_state_persistence():
     # 2. Alice places FIRST Settlement
     v1 = Vertex(Hex(0,0,0), 0)
     game.place_settlement(alice, v1)
-    
+
     assert game.setup_waiting_for_road is True
     assert len(game.settlements) == 1
 
@@ -31,7 +31,7 @@ async def test_setup_state_persistence():
 
     # 4. LOAD from Redis
     loaded_data = await service.get_game_state(room_id)
-    
+
     # FIX: Explicit assertion tells Pylance "loaded_data" is definitely a dict, not None
     assert loaded_data is not None, "Failed to retrieve game state from Redis"
 
@@ -41,10 +41,10 @@ async def test_setup_state_persistence():
     assert loaded_game.setup_waiting_for_road is True, "Backend forgot we are waiting for a road!"
     assert loaded_game.turn_phase == TurnPhase.SETUP
     assert loaded_game.setup_queue == game.setup_queue
-    
+
     # 6. Verify cheating prevention
     v2 = Vertex(Hex(10, 0, -10), 0)
-    
+
     with pytest.raises(ValueError, match="must place a road"):
         loaded_game.place_settlement(alice, v2)
 

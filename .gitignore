@@ -6,6 +6,7 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 .env
 .pytest_cache/
 backend/code_tool.py
@@ -17,6 +18,8 @@ npm-debug.log
 yarn-error.log
 dist/
 build/
+e2e/screenshots/
+.logs/
 .env.local
 .env.development.local
 .env.test.local
@@ -33,3 +36,4 @@ build/
 .vscode/
 .DS_Store
 Thumbs.db
+.coverage

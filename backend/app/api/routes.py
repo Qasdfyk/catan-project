@@ -1,43 +1,25 @@
-import uuid
-from datetime import datetime
-from fastapi import APIRouter, HTTPException, Request
-from app.schemas.game_schemas import GameCreateRequest, GameResponse
-from app.models.game import GameState
-from app.services.serializer import GameSerializer
-from app.services.redis_service import RedisService
+from fastapi import APIRouter, Depends, Request
+from app.schemas.game_schemas import PlayerNameRequest, RoomSession
+from app.services.room_service import RoomService
 
 router = APIRouter()
 
-@router.post("/games", response_model=GameResponse)
-async def create_game(request: Request, body: GameCreateRequest):
-    room_id = str(uuid.uuid4())[:8]
-    
-    try:
-        game = GameState.create_new_game(body.player_names)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    
-    game_dict = GameSerializer.game_to_dict(game)
-    
-    redis: RedisService = request.app.state.redis
-    await redis.save_game_state(room_id, game_dict)
-    
-    return GameResponse(
-        room_id=room_id,
-        status="created",
-        created_at=datetime.now().isoformat(),
-        players=game_dict["players"]
-    )
 
-@router.get("/games/{room_id}")
-async def get_game_state(request: Request, room_id: str):
-    """
-    Return current game state from Redis.
-    """
-    redis: RedisService = request.app.state.redis
-    game_data = await redis.get_game_state(room_id)
-    
-    if not game_data:
-        raise HTTPException(status_code=404, detail="Game not found")
-        
-    return game_data
+def get_rooms(request: Request) -> RoomService:
+    return request.app.state.rooms
+
+
+@router.post("/rooms", response_model=RoomSession)
+async def create_room(body: PlayerNameRequest, rooms: RoomService = Depends(get_rooms)):
+    return await rooms.create_room(body.name)
+
+
+@router.post("/rooms/{room_id}/join", response_model=RoomSession)
+async def join_room(room_id: str, body: PlayerNameRequest, rooms: RoomService = Depends(get_rooms)):
+    return await rooms.join_room(room_id, body.name)
+
+
+@router.get("/rooms/{room_id}")
+async def get_room(room_id: str, rooms: RoomService = Depends(get_rooms)):
+    """Public summary for the join screen. Holds no tokens and no game state."""
+    return await rooms.get_summary(room_id)
