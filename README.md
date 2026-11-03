@@ -11,6 +11,8 @@ the desert in the centre and a friendly robber that spares players with 2 points
 One click sets the rules we recommend for two players. The server checks every setting,
 and they cannot change once the game has started.
 
+<img src="docs/images/lobby.png" alt="The lobby with the rules recommended for two players" width="360">
+
 If a player leaves, anyone can hand their seat to a bot, and they can take it back by name.
 Shortcuts in the game: `R` rolls, `E` ends the turn, `Esc` leaves build mode.
 
