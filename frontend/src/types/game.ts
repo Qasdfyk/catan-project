@@ -102,12 +102,26 @@ export interface GameView {
   winner_seat: number | null;
 }
 
+export type DesertPlacement = 'random' | 'center';
+
+/** Chosen by the host in the lobby; fixed once the game starts. */
+export interface GameSettings {
+  victory_points: number;
+  /** On a 7, players holding more cards than this discard half. */
+  discard_limit: number;
+  desert: DesertPlacement;
+  /** The robber can't target opponents with 2 or fewer visible points. */
+  friendly_robber: boolean;
+  turn_seconds: number | null;
+}
+
 export interface PublicState {
   room_id: string;
   version: number;
   status: RoomStatus;
   host_seat: number;
   players: (LobbyPlayer | Player)[];
+  settings: GameSettings;
   game: GameView | null;
 }
 
