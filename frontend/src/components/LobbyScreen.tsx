@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { RoomConnection } from '../net/useRoom';
 import type { PublicState } from '../types/game';
+import { SettingsPanel } from './SettingsPanel';
 
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 4;
@@ -55,6 +56,8 @@ export const LobbyScreen = ({ state, seat, room }: LobbyScreenProps) => {
                 {isHost && state.players.length < MAX_PLAYERS && (
                     <button onClick={() => room.send('add_bot')}>Add a bot</button>
                 )}
+
+                <SettingsPanel settings={state.settings} editable={isHost} send={room.send} />
 
                 {isHost ? (
                     <button
