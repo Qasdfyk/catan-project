@@ -79,7 +79,7 @@ starts at thousands of messages per second, with the numbers below from
 | Whole stack, 1 → 8 backend workers | 185 → 702 actions/s |
 | Action to all players at 500 actions/s, 4 workers | p50 14.5 ms, p99 218 ms |
 | Fan-out at 4,000 messages/s, 4,000 connections | p99 1.3 ms, python-socketio 24.4 ms |
-| Fan-out limit | about 11,800 messages/s, all delivered; python-socketio delivered 8% at that load |
+| Fan-out at the load generator's limit, 4,000 connections | about 11,800 messages/s, all delivered; python-socketio delivered 8% |
 | Rooms split between two gateways | 483 actions/s, no failed rooms |
 
 The trade-offs and known limits are in [docs/design.md](docs/design.md).
