@@ -2,9 +2,11 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional, Set
 from app.models.hex_lib import Edge, Hex, Vertex
+from app.models.settings import DESERT_CENTER, DESERT_RANDOM
 import random
 
 RED_NUMBERS = (6, 8)
+CENTER = Hex(0, 0, 0)
 
 class ResourceType(str, Enum):
     """Available resource types in the game."""
@@ -49,12 +51,15 @@ class Board:
         return self.tiles.get(hex_coords)
 
     @staticmethod
-    def create_standard_game() -> 'Board':
+    def create_standard_game(desert: str = DESERT_RANDOM) -> 'Board':
         """
         Factory method to create a standard Catan board (Radius 2).
         - 19 Tiles total.
         - Randomly assigns resources and number tokens.
+        - The desert lands anywhere, or in the center with desert="center".
         """
+        if desert not in (DESERT_RANDOM, DESERT_CENTER):
+            raise ValueError(f"Unknown desert placement: {desert}.")
         board = Board()
 
         # 1. Generate Coordinates for Radius 2 (Standard map)
@@ -79,6 +84,9 @@ class Board:
         # 4. Shuffle until the most productive numbers are spread over the island
         while True:
             random.shuffle(resources)
+            if desert == DESERT_CENTER:
+                resources.remove(ResourceType.DESERT)
+                resources.insert(hexes.index(CENTER), ResourceType.DESERT)
             random.shuffle(numbers)
             board.tiles = Board._assign_tiles(hexes, resources, numbers)
             if not Board._red_numbers_touch(board):

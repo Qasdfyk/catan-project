@@ -4,6 +4,7 @@ import pytest
 
 from app.models.game import TRADABLE_RESOURCES, GameState, TurnPhase
 from app.models.player import DevCard
+from app.models.settings import GameSettings
 from app.services.serializer import GameSerializer
 
 MAX_ACTIONS = 40_000
@@ -93,6 +94,12 @@ def play_step(game: GameState, rng: random.Random):
 
 
 def assert_invariants(game: GameState):
+    if game.turn_phase == TurnPhase.DISCARD:
+        assert all(
+            game.get_player_by_color(c).card_count() > game.settings.discard_limit
+            for c in game.pending_discards
+        )
+
     for player in game.players:
         assert all(n >= 0 for n in player.resources.values())
         assert player.knights_played + len(player.dev_cards) <= 25
@@ -114,12 +121,28 @@ def assert_invariants(game: GameState):
         assert not any(n in game.settlements for n in vertex.get_adjacent_vertices())
 
 
+HOUSE_RULES = [
+    GameSettings(victory_points=6, discard_limit=5, desert="center", friendly_robber=True, turn_seconds=60),
+    GameSettings(victory_points=15, discard_limit=12, friendly_robber=True),
+    GameSettings(victory_points=8, discard_limit=9, desert="center"),
+]
+
+
 @pytest.mark.parametrize("seed", range(12))
 def test_random_game_reaches_a_winner_through_serialization(seed):
+    play_to_the_end(seed, GameSettings())
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_random_game_with_house_rules(seed):
+    play_to_the_end(seed, HOUSE_RULES[seed % len(HOUSE_RULES)])
+
+
+def play_to_the_end(seed: int, settings: GameSettings):
     rng = random.Random(seed)
     random.seed(seed)
     names = ["Alice", "Bob", "Charlie", "Dana"][: 2 + seed % 3]
-    game = GameState.create_new_game(names)
+    game = GameState.create_new_game(names, settings)
 
     for _ in range(MAX_ACTIONS):
         if game.is_game_over:
@@ -131,7 +154,8 @@ def test_random_game_reaches_a_winner_through_serialization(seed):
 
     assert game.is_game_over
     assert game.winner is not None
-    assert game.winner.victory_points + game.winner.hidden_points() >= 10
+    assert game.winner.victory_points + game.winner.hidden_points() >= settings.victory_points
+    assert game.settings == settings
 
     with pytest.raises(ValueError, match="game is over"):
         game.end_turn(game.get_current_player())
