@@ -7,7 +7,8 @@ import uuid
 from typing import Any, Dict, Optional
 
 from app.models.game import GameState
-from app.schemas.game_schemas import RoomSession
+from app.models.settings import GameSettings
+from app.schemas.game_schemas import RoomSession, SettingsUpdate
 from app.services.actions import apply_action
 from app.services.redis_service import RedisService
 from app.services.serializer import GameSerializer
@@ -58,6 +59,7 @@ class RoomService:
             "status": "lobby",
             "host_seat": 0,
             "seats": [{"name": host_name, "token": token}],
+            "settings": GameSettings().to_dict(),
         }
         await self.redis.save_room(room_id, room)
         return RoomSession(room_id=room_id, token=token, seat=0)
@@ -129,6 +131,8 @@ class RoomService:
                 self._add_bot(room, seat)
             elif action_type == "remove_bot":
                 self._remove_bot(room, seat, payload.get("seat"))
+            elif action_type == "update_settings":
+                self._update_settings(room, seat, payload)
             elif action_type == "replace_with_bot":
                 await self._replace_with_bot(room, game, seat, payload.get("seat"))
                 return
@@ -147,7 +151,7 @@ class RoomService:
     @staticmethod
     def _verify_lobby_host(room: Dict[str, Any], seat: int):
         if seat != room["host_seat"]:
-            raise RoomError("Only the host can change the seats.")
+            raise RoomError("Only the host can change the room.")
         if room["status"] != "lobby":
             raise RoomError("The game has already started.")
 
@@ -170,6 +174,17 @@ class RoomService:
         if target != len(seats) - 1:
             raise RoomError("Only the last seat can be freed.")
         seats.pop()
+
+    @classmethod
+    def _update_settings(cls, room: Dict[str, Any], seat: int, payload: Dict[str, Any]):
+        """Merges a partial change; the game takes a copy when it starts, so later changes are refused."""
+        cls._verify_lobby_host(room, seat)
+        try:
+            changes = SettingsUpdate.changes(payload)
+        except ValueError as error:
+            raise RoomError(str(error)) from None
+        # Rooms created before settings existed have none stored
+        room["settings"] = {**GameSettings.from_dict(room.get("settings")).to_dict(), **changes}
 
     async def _replace_with_bot(self, room: Dict[str, Any], game: Optional[GameState], seat: int, target: Any):
         """Keeps a game going when a player left. They can return by name at any time."""
@@ -201,7 +216,8 @@ class RoomService:
         if len(room["seats"]) < MIN_SEATS_TO_START:
             raise RoomError(f"At least {MIN_SEATS_TO_START} players are needed.")
 
-        game = GameState.create_new_game([entry["name"] for entry in room["seats"]])
+        settings = GameSettings.from_dict(room.get("settings"))
+        game = GameState.create_new_game([entry["name"] for entry in room["seats"]], settings)
         room["status"] = "playing"
         return game
 

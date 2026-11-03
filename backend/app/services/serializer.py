@@ -3,6 +3,7 @@ from app.models.game import GameState, Building, TradeOffer, TurnPhase, Building
 from app.models.board import Board, Tile, ResourceType, Port, PortType
 from app.models.player import DevCard, Player, PlayerColor
 from app.models.hex_lib import Hex, Vertex, Edge
+from app.models.settings import GameSettings
 
 class GameSerializer:
 
@@ -10,6 +11,7 @@ class GameSerializer:
     def game_to_dict(game: GameState) -> Dict[str, Any]:
         return {
             "players": [GameSerializer._player_to_dict(p) for p in game.players],
+            "settings": game.settings.to_dict(),
             "current_turn_index": game.current_turn_index,
             "turn_phase": game.turn_phase.value,
             "dice_roll": game.dice_roll,
@@ -52,6 +54,8 @@ class GameSerializer:
         game = GameState(
             board=board,
             players=players,
+            # Games saved before settings existed were played by the standard rules
+            settings=GameSettings.from_dict(data.get("settings")),
             current_turn_index=data["current_turn_index"],
             dice_roll=data["dice_roll"],
             dice=data.get("dice", []),

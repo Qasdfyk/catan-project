@@ -7,6 +7,7 @@ from enum import Enum
 from app.models.board import Board, ResourceType, PortType
 from app.models.player import DevCard, Player, PlayerColor
 from app.models.hex_lib import Edge, Vertex, Hex
+from app.models.settings import FRIENDLY_ROBBER_MAX_POINTS, GameSettings
 
 class TurnPhase(str, Enum):
     SETUP = "setup"
@@ -38,15 +39,16 @@ MAX_ROADS = 15
 MAX_SETTLEMENTS = 5
 MAX_CITIES = 4
 
-VICTORY_POINTS_TO_WIN = 10
 LONGEST_ROAD_MIN_LENGTH = 5
 LONGEST_ROAD_POINTS = 2
 LARGEST_ARMY_MIN_KNIGHTS = 3
 LARGEST_ARMY_POINTS = 2
 ROAD_BUILDING_ROADS = 2
-DISCARD_LIMIT = 7
 BANK_SIZE = 19
 LOG_SIZE = 40
+FRIENDLY_ROBBER_ERROR = (
+    f"The friendly robber leaves players with {FRIENDLY_ROBBER_MAX_POINTS} points or fewer alone."
+)
 
 TRADABLE_RESOURCES = [r for r in ResourceType if r != ResourceType.DESERT]
 
@@ -81,6 +83,7 @@ class GameState:
     """
     board: Board
     players: List[Player] = field(default_factory=list)
+    settings: GameSettings = field(default_factory=GameSettings)
     current_turn_index: int = 0
     dice_roll: Optional[int] = None
     dice: List[int] = field(default_factory=list)
@@ -124,11 +127,12 @@ class GameState:
     settlements: Dict[Vertex, Building] = field(default_factory=dict)
 
     @staticmethod
-    def create_new_game(player_names: List[str]) -> 'GameState':
+    def create_new_game(player_names: List[str], settings: Optional[GameSettings] = None) -> 'GameState':
         if len(player_names) < 2 or len(player_names) > 4:
             raise ValueError("Game requires 2 to 4 players.")
 
-        board = Board.create_standard_game()
+        settings = settings or GameSettings()
+        board = Board.create_standard_game(desert=settings.desert)
         players = []
         colors = list(PlayerColor)
 
@@ -150,6 +154,7 @@ class GameState:
         return GameState(
             board=board,
             players=players,
+            settings=settings,
             dev_deck=dev_deck,
             robber_hex=desert_hex,
             turn_phase=TurnPhase.SETUP,
@@ -229,7 +234,7 @@ class GameState:
     def _start_robber_sequence(self):
         self.pending_discards = {
             p.color: p.card_count() // 2
-            for p in self.players if p.card_count() > DISCARD_LIMIT
+            for p in self.players if p.card_count() > self.settings.discard_limit
         }
         self.turn_phase = TurnPhase.DISCARD if self.pending_discards else TurnPhase.MOVE_ROBBER
 
@@ -302,6 +307,8 @@ class GameState:
              raise ValueError("Robber must be moved to a new location.")
         if target_hex not in self.board.tiles:
             raise ValueError("Invalid hex coordinates.")
+        if target_hex not in self.legal_robber_hexes(player):
+            raise ValueError(FRIENDLY_ROBBER_ERROR)
 
         self.robber_hex = target_hex
         self._log(f"{player.name} moved the robber.")
@@ -314,14 +321,25 @@ class GameState:
         return [
             p for p in self.players
             if p.color != thief.color and p.card_count() > 0 and self._has_building_on_robber(p)
+            and not self._is_protected(thief, p)
         ]
 
-    def _has_building_on_robber(self, player: Player) -> bool:
-        robber_vertices = [Vertex(self.robber_hex, d).get_canonical() for d in range(6)]
-        return any(
-            v in self.settlements and self.settlements[v].owner == player.color
-            for v in robber_vertices
+    def _is_protected(self, thief: Player, player: Player) -> bool:
+        """
+        The friendly robber spares opponents who are far behind. Only the points
+        everyone can see count, so hidden cards cannot give a player away.
+        """
+        return (
+            self.settings.friendly_robber and player.color != thief.color
+            and player.victory_points <= FRIENDLY_ROBBER_MAX_POINTS
         )
+
+    def _owners_around(self, h: Hex) -> Set[PlayerColor]:
+        vertices = [Vertex(h, d).get_canonical() for d in range(6)]
+        return {self.settlements[v].owner for v in vertices if v in self.settlements}
+
+    def _has_building_on_robber(self, player: Player) -> bool:
+        return player.color in self._owners_around(self.robber_hex)
 
     def steal_resource(self, thief: Player, victim: Player):
         self._verify_turn(thief, TurnPhase.STEAL)
@@ -339,6 +357,8 @@ class GameState:
         # 2. Execute Steal
         if victim.card_count() == 0:
             raise ValueError("Victim has no resources to steal.")
+        if self._is_protected(thief, victim):
+            raise ValueError(FRIENDLY_ROBBER_ERROR)
 
         pool = []
         for res, count in victim.resources.items():
@@ -759,7 +779,16 @@ class GameState:
     def legal_robber_hexes(self, player: Player) -> List[Hex]:
         if self.is_game_over or not self._is_current(player) or self.turn_phase != TurnPhase.MOVE_ROBBER:
             return []
-        return [h for h in self.board.tiles if h != self.robber_hex]
+        hexes = [h for h in self.board.tiles if h != self.robber_hex]
+        if not self.settings.friendly_robber:
+            return hexes
+        allowed = [
+            h for h in hexes
+            if self.board.tiles[h].resource == ResourceType.DESERT
+            or not any(self._is_protected(player, self.get_player_by_color(c)) for c in self._owners_around(h))
+        ]
+        # When everyone is protected the robber still has to move somewhere
+        return allowed or hexes
 
     @staticmethod
     def _passes(check, *args) -> bool:
@@ -794,7 +823,7 @@ class GameState:
 
     def _check_victory(self):
         p = self.get_current_player()
-        if not self.is_game_over and p.victory_points + p.hidden_points() >= VICTORY_POINTS_TO_WIN:
+        if not self.is_game_over and p.victory_points + p.hidden_points() >= self.settings.victory_points:
             self.is_game_over = True
             self.winner = p
             self._log(f"{p.name} won the game!")

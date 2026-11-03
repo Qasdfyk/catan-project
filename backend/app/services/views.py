@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from app.models.game import TRADABLE_RESOURCES, GameState, TurnPhase
 from app.models.hex_lib import Edge, Hex, Vertex
+from app.models.settings import GameSettings
 from app.services.serializer import GameSerializer
 
 PUBLIC_GAME_FIELDS = (
@@ -47,6 +48,8 @@ def public_view(room: Dict[str, Any], game: Optional[GameState]) -> Dict[str, An
         "version": room["version"],
         "status": room["status"],
         "host_seat": room["host_seat"],
+        # Chosen in the lobby; the game keeps its own copy once it starts
+        "settings": (game.settings if game else GameSettings.from_dict(room.get("settings"))).to_dict(),
     }
 
     if game is None:
