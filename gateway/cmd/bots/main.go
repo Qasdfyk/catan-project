@@ -1,5 +1,6 @@
 // Bots fills empty seats. Each bot is a goroutine with one WebSocket connection
-// to the gateway, so an idle one costs almost nothing.
+// to the gateway, so an idle one costs almost nothing. It also runs the turn
+// timer, which is why only one instance should run.
 package main
 
 import (
@@ -15,6 +16,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"catan/gateway/internal/bot"
+	"catan/gateway/internal/server"
 )
 
 const (
@@ -76,6 +78,9 @@ func main() {
 	for _, raw := range waiting {
 		start(raw)
 	}
+
+	backend := server.NewHTTPBackend(env("BACKEND_URL", "http://localhost:8000"), env("INTERNAL_API_KEY", "dev-internal-key"))
+	go runTurnTimer(ctx, time.Second, redisDueRooms(client), backend.Timeout)
 
 	log.Printf("bots ready, resuming %d seats", len(waiting))
 	// The channel stays open after a signal, so the context has to end the loop
