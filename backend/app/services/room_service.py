@@ -3,6 +3,7 @@ Rooms: the lobby, seats and their session tokens, and the single path through
 which a game state changes (load, validate, save, publish) under a room lock.
 """
 import secrets
+import time
 import uuid
 from typing import Any, Dict, Optional
 
@@ -49,6 +50,8 @@ class InvalidSession(RoomError):
 class RoomService:
     def __init__(self, redis: RedisService):
         self.redis = redis
+        # Replaced in tests to move time forward
+        self.clock = time.time
 
     async def create_room(self, host_name: str) -> RoomSession:
         room_id = uuid.uuid4().hex[:8]
@@ -148,6 +151,27 @@ class RoomService:
 
             await self._commit(room, game)
 
+    async def time_out(self, room_id: str) -> bool:
+        """
+        Finishes the turn of whoever let the time run out. Called by the bot
+        service once a second for each due room, so an early, late or repeated
+        call must do no harm. Returns whether a turn was finished.
+        """
+        async with self.redis.room_lock(room_id):
+            room = await self.redis.get_room(room_id)
+            if room is None or room.get("turn_deadline") is None or room["status"] != "playing":
+                await self.redis.clear_turn_deadline(room_id)
+                return False
+            if self.clock() < room["turn_deadline"]:
+                return False
+
+            game = await self._load_game(room)
+            game.auto_finish_turn()
+            if game.is_game_over:
+                room["status"] = "finished"
+            await self._commit(room, game)
+            return True
+
     @staticmethod
     def _verify_lobby_host(room: Dict[str, Any], seat: int):
         if seat != room["host_seat"]:
@@ -223,10 +247,24 @@ class RoomService:
 
     async def _commit(self, room: Dict[str, Any], game: Optional[GameState]):
         room["version"] += 1
+        await self._update_turn_deadline(room, game)
         if game is not None:
             await self.redis.save_game_state(room["room_id"], GameSerializer.game_to_dict(game))
         await self._store(room)
         await self.redis.publish_event(self._event(room, game))
+
+    async def _update_turn_deadline(self, room: Dict[str, Any], game: Optional[GameState]):
+        """Every step of a turn (rolling, discarding, moving the robber...) gets the full time."""
+        if game is None or room["status"] != "playing" or game.is_game_over or not game.settings.turn_seconds:
+            room.update(turn_deadline=None, turn_key=None)
+            await self.redis.clear_turn_deadline(room["room_id"])
+            return
+
+        key = f"{game.turn_number}:{game.turn_phase.value}"
+        if room.get("turn_key") != key or room.get("turn_deadline") is None:
+            room.update(turn_deadline=self.clock() + game.settings.turn_seconds, turn_key=key)
+        # Set on every change, so the set heals if it lost a room
+        await self.redis.set_turn_deadline(room["room_id"], room["turn_deadline"])
 
     async def _store(self, room: Dict[str, Any]):
         await self.redis.save_room(room["room_id"], room)

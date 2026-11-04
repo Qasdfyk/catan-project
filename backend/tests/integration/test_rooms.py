@@ -1,67 +1,16 @@
 import asyncio
 import json
 
-import httpx
 import pytest
-import pytest_asyncio
 
-from app.core.config import settings
 from app.models.game import GameState
 from app.models.player import DevCard
 from app.models.settings import GameSettings
 from app.services.serializer import GameSerializer
 from app.services.views import public_view
 from app.main import app
-from app.services.redis_service import ACTIVE_BOTS_KEY, BOTS_CHANNEL, EVENTS_CHANNEL, RedisService
-from app.services.room_service import RoomService
-
-HEADERS = {"X-Internal-Key": settings.INTERNAL_API_KEY}
-CENTER = {"q": 0, "r": 0, "s": 0}
-
-
-@pytest_asyncio.fixture
-async def client():
-    # httpx does not run the lifespan, so the app state is set up here
-    app.state.redis = RedisService()
-    app.state.rooms = RoomService(app.state.redis)
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:
-        yield http
-    await app.state.redis.close()
-
-
-async def create_room(client, name="Alice"):
-    response = await client.post("/api/rooms", json={"name": name})
-    assert response.status_code == 200
-    return response.json()
-
-
-async def join(client, room_id, name):
-    return await client.post(f"/api/rooms/{room_id}/join", json={"name": name})
-
-
-async def act(client, room_id, token, action, payload=None):
-    return await client.post(
-        f"/internal/rooms/{room_id}/actions",
-        json={"token": token, "type": action, "payload": payload or {}},
-        headers=HEADERS,
-    )
-
-
-async def session(client, room_id, token):
-    response = await client.post(
-        f"/internal/rooms/{room_id}/session", json={"token": token}, headers=HEADERS
-    )
-    assert response.status_code == 200
-    return response.json()
-
-
-async def started_room(client):
-    host = await create_room(client)
-    guest = (await join(client, host["room_id"], "Bob")).json()
-    response = await act(client, host["room_id"], host["token"], "start_game")
-    assert response.status_code == 200
-    return host, guest
+from app.services.redis_service import ACTIVE_BOTS_KEY, BOTS_CHANNEL, EVENTS_CHANNEL
+from rooms_api import CENTER, act, create_room, join, lasting_state, session, started_room
 
 
 @pytest.mark.asyncio
@@ -298,11 +247,11 @@ async def test_version_grows_with_every_change(client):
 @pytest.mark.asyncio
 async def test_rejected_action_changes_nothing(client):
     host, _ = await started_room(client)
-    before = await session(client, host["room_id"], host["token"])
+    before = await lasting_state(client, host["room_id"], host["token"])
 
     await act(client, host["room_id"], host["token"], "roll_dice")
 
-    assert await session(client, host["room_id"], host["token"]) == before
+    assert await lasting_state(client, host["room_id"], host["token"]) == before
 
 
 @pytest.mark.asyncio
@@ -530,12 +479,12 @@ async def test_guest_cannot_change_settings(client):
 @pytest.mark.parametrize("payload", [{"victory_points": 20}, {"desert": "edge"}, {"speed": 2}])
 async def test_invalid_settings_change_nothing(client, payload):
     host = await create_room(client)
-    before = await session(client, host["room_id"], host["token"])
+    before = await lasting_state(client, host["room_id"], host["token"])
 
     response = await act(client, host["room_id"], host["token"], "update_settings", payload)
 
     assert response.status_code == 400
-    assert await session(client, host["room_id"], host["token"]) == before
+    assert await lasting_state(client, host["room_id"], host["token"]) == before
 
 
 @pytest.mark.asyncio

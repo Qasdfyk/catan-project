@@ -26,3 +26,8 @@ async def get_session(room_id: str, body: SessionRequest, rooms: RoomService = D
 async def perform_action(room_id: str, body: ActionRequest, rooms: RoomService = Depends(get_rooms)):
     await rooms.perform_action(room_id, body.token, body.type, body.payload)
     return {"ok": True}
+
+
+@router.post("/rooms/{room_id}/timeout")
+async def time_out(room_id: str, rooms: RoomService = Depends(get_rooms)):
+    return {"ok": True, "finished": await rooms.time_out(room_id)}

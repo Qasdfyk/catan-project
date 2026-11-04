@@ -2,6 +2,7 @@
 What each player may see. Hands and session tokens stay private: the public
 view goes to the whole room, the private one only to its seat.
 """
+import time
 from typing import Any, Dict, List, Optional
 
 from app.models.game import TRADABLE_RESOURCES, GameState, TurnPhase
@@ -50,6 +51,9 @@ def public_view(room: Dict[str, Any], game: Optional[GameState]) -> Dict[str, An
         "host_seat": room["host_seat"],
         # Chosen in the lobby; the game keeps its own copy once it starts
         "settings": (game.settings if game else GameSettings.from_dict(room.get("settings"))).to_dict(),
+        # Epoch seconds; the server time lets clients correct for their clock being off
+        "turn_deadline": room.get("turn_deadline"),
+        "server_time": time.time(),
     }
 
     if game is None:
