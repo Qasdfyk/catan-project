@@ -108,6 +108,8 @@ label.check input { width: auto; margin: 0; flex: none; }
 }
 .status-text { flex: 1; font-weight: 600; }
 .dice { font-weight: 700; font-size: 18px; }
+.turn-timer { padding: 2px 8px; border-radius: 6px; background: var(--surface-2); font-weight: 700; font-variant-numeric: tabular-nums; }
+.turn-timer.urgent { background: var(--danger); color: #fff; }
 .offline { color: var(--danger); font-size: 14px; }
 
 .toast {

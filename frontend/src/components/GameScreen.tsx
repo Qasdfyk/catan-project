@@ -10,6 +10,7 @@ import { DiscardDialog } from './DiscardDialog';
 import { PlayerTradePanel, TradeOfferPanel } from './PlayerTrade';
 import { ResourceCards } from './ResourceCards';
 import { TradePanel } from './TradePanel';
+import { TurnTimer } from './TurnTimer';
 import { WinnerDialog } from './WinnerDialog';
 import { PLAYER_COLORS } from '../utils/labels';
 import { settingsSummary } from '../utils/settings';
@@ -145,6 +146,13 @@ export const GameScreen = ({ state, mine, room }: GameScreenProps) => {
                         ? `${winner.name} won the game!`
                         : instruction(game, current, isMyTurn, legal.must_discard)}
                 </span>
+                {state.turn_deadline !== null && (
+                    <TurnTimer
+                        key={`${state.turn_deadline}:${state.server_time}`}
+                        deadline={state.turn_deadline}
+                        serverTime={state.server_time}
+                    />
+                )}
                 {(mine.hidden_points ?? 0) > 0 && (
                     <span className="muted" title="Your hidden Victory Point cards">
                         +{mine.hidden_points} hidden VP
