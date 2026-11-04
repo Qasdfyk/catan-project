@@ -54,6 +54,7 @@ def public_view(room: Dict[str, Any], game: Optional[GameState]) -> Dict[str, An
         # Epoch seconds; the server time lets clients correct for their clock being off
         "turn_deadline": room.get("turn_deadline"),
         "server_time": time.time(),
+        "rematch_room_id": room.get("rematch_room_id"),
     }
 
     if game is None:

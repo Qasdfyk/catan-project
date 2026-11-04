@@ -139,6 +139,10 @@ class RoomService:
             elif action_type == "replace_with_bot":
                 await self._replace_with_bot(room, game, seat, payload.get("seat"))
                 return
+            elif action_type == "rematch":
+                if await self._rematch(room, seat):
+                    await self._commit(room, game)
+                return
             elif game is None:
                 raise RoomError("The game has not started yet.")
             else:
@@ -150,6 +154,20 @@ class RoomService:
                     room["status"] = "finished"
 
             await self._commit(room, game)
+
+    async def join_rematch(self, room_id: str, token: str) -> RoomSession:
+        """Trades a session of a finished game for the same seat in its rematch."""
+        room = await self._load_room(room_id)
+        seat = self._seat_by_token(room, token)
+        rematch_id = room.get("rematch_room_id")
+        if not rematch_id:
+            raise RoomConflict("There is no rematch yet.")
+
+        entry = (await self._load_room(rematch_id))["seats"][seat]
+        if entry.get("replaced"):
+            # A player who came back to the finished game after leaving it takes the seat from the bot
+            return await self.join_room(rematch_id, entry["name"])
+        return RoomSession(room_id=rematch_id, token=room["seats"][seat]["rematch_token"], seat=seat)
 
     async def time_out(self, room_id: str) -> bool:
         """
@@ -225,6 +243,43 @@ class RoomService:
         seats[target].update(token=secrets.token_urlsafe(24), bot=True, replaced=True)
         await self._commit(room, game)
         await self.redis.summon_bot(room["room_id"], seats[target]["token"])
+
+    async def _rematch(self, room: Dict[str, Any], seat: int) -> bool:
+        """
+        Opens a lobby with the same players, seats and settings. Returns False
+        when it already exists, so a second click changes nothing.
+        """
+        if seat != room["host_seat"]:
+            raise RoomError("Only the host can start a rematch.")
+        if room["status"] != "finished":
+            raise RoomError("The game is not over yet.")
+        if room.get("rematch_room_id"):
+            return False
+
+        seats = []
+        for entry in room["seats"]:
+            new_entry = {"name": entry["name"], "token": secrets.token_urlsafe(24)}
+            if entry.get("replaced"):
+                # A bot keeps the seat until the player who left returns by name
+                new_entry.update(bot=True, replaced=True)
+            elif entry.get("bot"):
+                new_entry["bot"] = True
+            seats.append(new_entry)
+
+        rematch = {
+            "room_id": uuid.uuid4().hex[:8],
+            "version": 1,
+            "status": "lobby",
+            "host_seat": room["host_seat"],
+            "seats": seats,
+            "settings": GameSettings.from_dict(room.get("settings")).to_dict(),
+        }
+        await self.redis.save_room(rematch["room_id"], rematch)
+
+        room["rematch_room_id"] = rematch["room_id"]
+        for entry, new_entry in zip(room["seats"], seats, strict=True):
+            entry["rematch_token"] = new_entry["token"]
+        return True
 
     async def _summon_bots(self, room: Dict[str, Any]):
         for entry in room["seats"]:
