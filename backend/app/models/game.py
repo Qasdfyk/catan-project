@@ -85,6 +85,8 @@ class GameState:
     players: List[Player] = field(default_factory=list)
     settings: GameSettings = field(default_factory=GameSettings)
     current_turn_index: int = 0
+    # Counts the turns that have ended, setup turns included; a turn timer restarts when it changes
+    turn_number: int = 0
     dice_roll: Optional[int] = None
     dice: List[int] = field(default_factory=list)
     turn_phase: TurnPhase = TurnPhase.SETUP
@@ -180,6 +182,7 @@ class GameState:
         if self.is_game_over:
             return
 
+        self.turn_number += 1
         if self.turn_phase == TurnPhase.SETUP:
             # Remove the turn we just finished
             self.setup_queue.pop(0)
@@ -207,6 +210,66 @@ class GameState:
             self.turn_phase = TurnPhase.ROLL_DICE
             # Points gained outside of one's turn (Longest Road) only win on one's own turn
             self._check_victory()
+
+    def auto_finish_turn(self, rng=random):
+        """
+        Ends the turn for whoever is holding it up, doing only what the rules
+        require: random placements in setup, random discards, a random robber
+        hex and victim. Every move goes through the public methods, so all rule
+        checks still apply.
+        """
+        self._verify_active()
+        blockers = (
+            [self.get_player_by_color(c) for c in self.pending_discards]
+            if self.turn_phase == TurnPhase.DISCARD else [self.get_current_player()]
+        )
+        for player in blockers:
+            self._log(f"{player.name} ran out of time.")
+
+        turn = self.turn_number
+        while not self.is_game_over and self.turn_number == turn:
+            self._auto_step(rng)
+
+    def _auto_step(self, rng):
+        player = self.get_current_player()
+        phase = self.turn_phase
+
+        if phase == TurnPhase.SETUP:
+            if not self.setup_waiting_for_road:
+                self.place_settlement(player, rng.choice(self.legal_settlements(player)))
+            else:
+                self.place_road(player, rng.choice(self.legal_roads(player)))
+        elif phase == TurnPhase.ROLL_DICE:
+            self.roll_dice(player)
+        elif phase == TurnPhase.DISCARD:
+            for color, required in list(self.pending_discards.items()):
+                loser = self.get_player_by_color(color)
+                cards: Dict[ResourceType, int] = {}
+                pool = [r for r, n in loser.resources.items() for _ in range(n)]
+                for resource in rng.sample(pool, required):
+                    cards[resource] = cards.get(resource, 0) + 1
+                self.discard(loser, cards)
+        elif phase == TurnPhase.MOVE_ROBBER:
+            self.move_robber(player, rng.choice(self.legal_robber_hexes(player)))
+        elif phase == TurnPhase.STEAL:
+            victims = self.steal_victims(player)
+            if victims:
+                self.steal_resource(player, rng.choice(victims))
+            else:
+                # Only a hand changed outside the rules leaves nobody to steal from
+                self.turn_phase = self.return_phase
+        elif phase == TurnPhase.ROAD_BUILDING:
+            roads = self.legal_roads(player)
+            if roads:
+                self.place_road(player, rng.choice(roads))
+            else:
+                # Playing the card needs a free edge, so this too only follows an edited state
+                self.free_roads_left = 0
+                self.turn_phase = self.return_phase
+        else:
+            if self.trade_offer is not None:
+                self.cancel_trade(player)
+            self.end_turn(player)
 
     def roll_dice(self, player: Optional[Player] = None) -> int:
         self._verify_active()

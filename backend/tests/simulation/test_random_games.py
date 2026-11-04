@@ -159,3 +159,56 @@ def play_to_the_end(seed: int, settings: GameSettings):
 
     with pytest.raises(ValueError, match="game is over"):
         game.end_turn(game.get_current_player())
+
+
+TIMED_OUT_TURNS = 300
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_games_where_every_turn_times_out(seed):
+    """Nobody builds after the setup, so these games cannot end: they run a fixed number of turns."""
+    settings = [GameSettings(), *HOUSE_RULES][seed % 4]
+    rng = random.Random(seed)
+    random.seed(seed)
+    names = ["Alice", "Bob", "Charlie", "Dana"][: 2 + seed % 3]
+    game = GameState.create_new_game(names, settings)
+
+    for turn in range(TIMED_OUT_TURNS):
+        seat = game.current_turn_index
+        game.auto_finish_turn(rng)
+        assert_invariants(game)
+        assert game.turn_number == turn + 1
+        if turn >= 2 * len(names):
+            assert game.current_turn_index == (seat + 1) % len(names)
+        game = GameSerializer.dict_to_game(GameSerializer.game_to_dict(game))
+
+    assert not game.is_game_over
+    assert game.turn_phase == TurnPhase.ROLL_DICE
+    assert all(game._count_roads(p) == 2 for p in game.players)
+
+
+@pytest.mark.parametrize("seed", range(9))
+def test_random_games_with_players_running_out_of_time(seed):
+    """Timeouts strike at any moment of a normal game, so they meet every phase it reaches."""
+    settings = [GameSettings(), *HOUSE_RULES][seed % 4]
+    rng = random.Random(seed)
+    random.seed(seed)
+    names = ["Alice", "Bob", "Charlie", "Dana"][: 2 + seed % 3]
+    game = GameState.create_new_game(names, settings)
+    phases = set()
+
+    for _ in range(MAX_ACTIONS):
+        if game.is_game_over:
+            break
+        if rng.random() < 0.05:
+            phases.add(game.turn_phase)
+            turn = game.turn_number
+            game.auto_finish_turn(rng)
+            assert game.is_game_over or game.turn_number == turn + 1
+        else:
+            play_step(game, rng)
+        assert_invariants(game)
+        game = GameSerializer.dict_to_game(GameSerializer.game_to_dict(game))
+
+    assert game.is_game_over
+    assert {TurnPhase.ROLL_DICE, TurnPhase.MAIN_PHASE} <= phases

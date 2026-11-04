@@ -6,6 +6,7 @@ from app.core.config import settings
 EVENTS_CHANNEL = "catan:events"
 BOTS_CHANNEL = "catan:bots"
 ACTIVE_BOTS_KEY = "catan:active_bots"
+TURN_DEADLINES_KEY = "catan:turn_deadlines"
 ROOM_TTL_SECONDS = 24 * 3600
 
 class RedisService:
@@ -50,6 +51,13 @@ class RedisService:
         bot = json.dumps({"room_id": room_id, "token": token})
         await self.redis.sadd(ACTIVE_BOTS_KEY, bot)
         await self.redis.publish(BOTS_CHANNEL, bot)
+
+    async def set_turn_deadline(self, room_id: str, deadline: float):
+        """The bot service polls this set and reports each room whose time is up."""
+        await self.redis.zadd(TURN_DEADLINES_KEY, {room_id: deadline})
+
+    async def clear_turn_deadline(self, room_id: str):
+        await self.redis.zrem(TURN_DEADLINES_KEY, room_id)
 
     async def close(self):
         await self.redis.aclose()
