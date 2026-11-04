@@ -13,6 +13,7 @@ class GameSerializer:
             "players": [GameSerializer._player_to_dict(p) for p in game.players],
             "settings": game.settings.to_dict(),
             "current_turn_index": game.current_turn_index,
+            "turn_number": game.turn_number,
             "turn_phase": game.turn_phase.value,
             "dice_roll": game.dice_roll,
             "dice": game.dice,
@@ -57,6 +58,7 @@ class GameSerializer:
             # Games saved before settings existed were played by the standard rules
             settings=GameSettings.from_dict(data.get("settings")),
             current_turn_index=data["current_turn_index"],
+            turn_number=data.get("turn_number", 0),
             dice_roll=data["dice_roll"],
             dice=data.get("dice", []),
             turn_phase=TurnPhase(data["turn_phase"]),

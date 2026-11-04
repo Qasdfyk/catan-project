@@ -108,6 +108,8 @@ label.check input { width: auto; margin: 0; flex: none; }
 }
 .status-text { flex: 1; font-weight: 600; }
 .dice { font-weight: 700; font-size: 18px; }
+.turn-timer { padding: 2px 8px; border-radius: 6px; background: var(--surface-2); font-weight: 700; font-variant-numeric: tabular-nums; }
+.turn-timer.urgent { background: var(--danger); color: #fff; }
 .offline { color: var(--danger); font-size: 14px; }
 
 .toast {
@@ -236,6 +238,8 @@ body { background: linear-gradient(160deg, #173f5c, #245f80); }
 .card { box-shadow: 0 12px 40px rgba(0, 0, 0, .3); }
 a.button { display: inline-block; padding: 8px 12px; border-radius: 6px; text-align: center; text-decoration: none; }
 a.button.primary { flex: 1; background: var(--accent); color: var(--accent-text); font-weight: 600; }
+a.button:not(.primary) { flex: 1; border: 1px solid var(--line); background: var(--surface); color: var(--text); }
+a.button:not(.primary):hover { background: var(--surface-2); }
 
 .board-area { background: radial-gradient(circle at 50% 45%, #3c9cc6, #1f6d94 75%); }
 

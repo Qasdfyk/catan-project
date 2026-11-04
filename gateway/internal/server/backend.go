@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"time"
@@ -70,17 +71,29 @@ func (b *HTTPBackend) Action(ctx context.Context, roomID, token, action string, 
 	return b.post(ctx, roomID, "actions", body, nil)
 }
 
+// Timeout asks the backend to end a turn whose time ran out. Calling it before
+// the deadline does nothing, so it is safe to repeat.
+func (b *HTTPBackend) Timeout(ctx context.Context, roomID string) error {
+	return b.post(ctx, roomID, "timeout", nil, nil)
+}
+
 func (b *HTTPBackend) post(ctx context.Context, roomID, path string, body any, out any) error {
-	encoded, err := json.Marshal(body)
-	if err != nil {
-		return err
+	var reader io.Reader
+	if body != nil {
+		encoded, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		reader = bytes.NewReader(encoded)
 	}
 	target := fmt.Sprintf("%s/internal/rooms/%s/%s", b.baseURL, url.PathEscape(roomID), path)
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(encoded))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, target, reader)
 	if err != nil {
 		return err
 	}
-	request.Header.Set("Content-Type", "application/json")
+	if body != nil {
+		request.Header.Set("Content-Type", "application/json")
+	}
 	request.Header.Set("X-Internal-Key", b.apiKey)
 
 	response, err := b.client.Do(request)

@@ -53,7 +53,7 @@ PORT="$gateway_port" BACKEND_URL="http://localhost:$backend_port" "$bin/gateway"
 pids+=($!)
 wait_for gateway "http://localhost:$gateway_port/health"
 
-GATEWAY_URL="ws://localhost:$gateway_port/ws" "$bin/bots" > "$logs/bots.log" 2>&1 &
+GATEWAY_URL="ws://localhost:$gateway_port/ws" BACKEND_URL="http://localhost:$backend_port" "$bin/bots" > "$logs/bots.log" 2>&1 &
 pids+=($!)
 
 (cd "$root/frontend" && BACKEND_URL="http://localhost:$backend_port" GATEWAY_URL="ws://localhost:$gateway_port" exec node_modules/.bin/vite --port "$frontend_port" --strictPort) > "$logs/frontend.log" 2>&1 &

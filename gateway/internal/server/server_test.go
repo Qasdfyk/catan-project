@@ -456,6 +456,25 @@ func TestHTTPBackendRoundTrip(t *testing.T) {
 	}
 }
 
+func TestHTTPBackendTimeoutPostsWithoutABody(t *testing.T) {
+	var path, key string
+	var length int64
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path, key, length = r.URL.Path, r.Header.Get("X-Internal-Key"), r.ContentLength
+		w.Write([]byte(`{"ok":true,"finished":false}`))
+	}))
+	defer backend.Close()
+
+	err := NewHTTPBackend(backend.URL, "key").Timeout(context.Background(), "room")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != "/internal/rooms/room/timeout" || key != "key" || length != 0 {
+		t.Fatalf("got %s %q length %d", path, key, length)
+	}
+}
+
 func TestChatReachesTheRoomWithTheSendersSeat(t *testing.T) {
 	h := newHarness(t)
 	alice := h.join(t, "alice")

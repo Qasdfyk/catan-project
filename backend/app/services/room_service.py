@@ -3,6 +3,7 @@ Rooms: the lobby, seats and their session tokens, and the single path through
 which a game state changes (load, validate, save, publish) under a room lock.
 """
 import secrets
+import time
 import uuid
 from typing import Any, Dict, Optional
 
@@ -49,6 +50,8 @@ class InvalidSession(RoomError):
 class RoomService:
     def __init__(self, redis: RedisService):
         self.redis = redis
+        # Replaced in tests to move time forward
+        self.clock = time.time
 
     async def create_room(self, host_name: str) -> RoomSession:
         room_id = uuid.uuid4().hex[:8]
@@ -136,6 +139,10 @@ class RoomService:
             elif action_type == "replace_with_bot":
                 await self._replace_with_bot(room, game, seat, payload.get("seat"))
                 return
+            elif action_type == "rematch":
+                if await self._rematch(room, seat):
+                    await self._commit(room, game)
+                return
             elif game is None:
                 raise RoomError("The game has not started yet.")
             else:
@@ -147,6 +154,41 @@ class RoomService:
                     room["status"] = "finished"
 
             await self._commit(room, game)
+
+    async def join_rematch(self, room_id: str, token: str) -> RoomSession:
+        """Trades a session of a finished game for the same seat in its rematch."""
+        room = await self._load_room(room_id)
+        seat = self._seat_by_token(room, token)
+        rematch_id = room.get("rematch_room_id")
+        if not rematch_id:
+            raise RoomConflict("There is no rematch yet.")
+
+        entry = (await self._load_room(rematch_id))["seats"][seat]
+        if entry.get("replaced"):
+            # A player who came back to the finished game after leaving it takes the seat from the bot
+            return await self.join_room(rematch_id, entry["name"])
+        return RoomSession(room_id=rematch_id, token=room["seats"][seat]["rematch_token"], seat=seat)
+
+    async def time_out(self, room_id: str) -> bool:
+        """
+        Finishes the turn of whoever let the time run out. Called by the bot
+        service once a second for each due room, so an early, late or repeated
+        call must do no harm. Returns whether a turn was finished.
+        """
+        async with self.redis.room_lock(room_id):
+            room = await self.redis.get_room(room_id)
+            if room is None or room.get("turn_deadline") is None or room["status"] != "playing":
+                await self.redis.clear_turn_deadline(room_id)
+                return False
+            if self.clock() < room["turn_deadline"]:
+                return False
+
+            game = await self._load_game(room)
+            game.auto_finish_turn()
+            if game.is_game_over:
+                room["status"] = "finished"
+            await self._commit(room, game)
+            return True
 
     @staticmethod
     def _verify_lobby_host(room: Dict[str, Any], seat: int):
@@ -202,6 +244,43 @@ class RoomService:
         await self._commit(room, game)
         await self.redis.summon_bot(room["room_id"], seats[target]["token"])
 
+    async def _rematch(self, room: Dict[str, Any], seat: int) -> bool:
+        """
+        Opens a lobby with the same players, seats and settings. Returns False
+        when it already exists, so a second click changes nothing.
+        """
+        if seat != room["host_seat"]:
+            raise RoomError("Only the host can start a rematch.")
+        if room["status"] != "finished":
+            raise RoomError("The game is not over yet.")
+        if room.get("rematch_room_id"):
+            return False
+
+        seats = []
+        for entry in room["seats"]:
+            new_entry = {"name": entry["name"], "token": secrets.token_urlsafe(24)}
+            if entry.get("replaced"):
+                # A bot keeps the seat until the player who left returns by name
+                new_entry.update(bot=True, replaced=True)
+            elif entry.get("bot"):
+                new_entry["bot"] = True
+            seats.append(new_entry)
+
+        rematch = {
+            "room_id": uuid.uuid4().hex[:8],
+            "version": 1,
+            "status": "lobby",
+            "host_seat": room["host_seat"],
+            "seats": seats,
+            "settings": GameSettings.from_dict(room.get("settings")).to_dict(),
+        }
+        await self.redis.save_room(rematch["room_id"], rematch)
+
+        room["rematch_room_id"] = rematch["room_id"]
+        for entry, new_entry in zip(room["seats"], seats, strict=True):
+            entry["rematch_token"] = new_entry["token"]
+        return True
+
     async def _summon_bots(self, room: Dict[str, Any]):
         for entry in room["seats"]:
             if entry.get("bot"):
@@ -223,10 +302,24 @@ class RoomService:
 
     async def _commit(self, room: Dict[str, Any], game: Optional[GameState]):
         room["version"] += 1
+        await self._update_turn_deadline(room, game)
         if game is not None:
             await self.redis.save_game_state(room["room_id"], GameSerializer.game_to_dict(game))
         await self._store(room)
         await self.redis.publish_event(self._event(room, game))
+
+    async def _update_turn_deadline(self, room: Dict[str, Any], game: Optional[GameState]):
+        """Every step of a turn (rolling, discarding, moving the robber...) gets the full time."""
+        if game is None or room["status"] != "playing" or game.is_game_over or not game.settings.turn_seconds:
+            room.update(turn_deadline=None, turn_key=None)
+            await self.redis.clear_turn_deadline(room["room_id"])
+            return
+
+        key = f"{game.turn_number}:{game.turn_phase.value}"
+        if room.get("turn_key") != key or room.get("turn_deadline") is None:
+            room.update(turn_deadline=self.clock() + game.settings.turn_seconds, turn_key=key)
+        # Set on every change, so the set heals if it lost a room
+        await self.redis.set_turn_deadline(room["room_id"], room["turn_deadline"])
 
     async def _store(self, room: Dict[str, Any]):
         await self.redis.save_room(room["room_id"], room)

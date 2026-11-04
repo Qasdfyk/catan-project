@@ -10,6 +10,7 @@ import { DiscardDialog } from './DiscardDialog';
 import { PlayerTradePanel, TradeOfferPanel } from './PlayerTrade';
 import { ResourceCards } from './ResourceCards';
 import { TradePanel } from './TradePanel';
+import { TurnTimer } from './TurnTimer';
 import { WinnerDialog } from './WinnerDialog';
 import { PLAYER_COLORS } from '../utils/labels';
 import { settingsSummary } from '../utils/settings';
@@ -37,6 +38,8 @@ interface GameScreenProps {
     state: PublicState;
     mine: PrivateState;
     room: RoomConnection;
+    /** Why following the host into the rematch failed, if it did. */
+    rematchError: string;
 }
 
 const instruction = (game: GameView, current: Player, isMyTurn: boolean, mustDiscard: number): string => {
@@ -66,7 +69,7 @@ const instruction = (game: GameView, current: Player, isMyTurn: boolean, mustDis
     }
 };
 
-export const GameScreen = ({ state, mine, room }: GameScreenProps) => {
+export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps) => {
     const game = state.game as GameView;
     const players = state.players as Player[];
     const { send } = room;
@@ -134,8 +137,16 @@ export const GameScreen = ({ state, mine, room }: GameScreenProps) => {
 
     return (
         <div className={isMyTurn ? 'game my-turn' : 'game'}>
-            {winner && !winnerClosed && (
-                <WinnerDialog winner={winner} players={players} onClose={() => setWinnerClosed(true)} />
+            {winner && (!winnerClosed || rematchError) && (
+                <WinnerDialog
+                    winner={winner}
+                    players={players}
+                    isHost={state.host_seat === mine.seat}
+                    rematchStarted={state.rematch_room_id !== null}
+                    rematchError={rematchError}
+                    onRematch={() => send('rematch')}
+                    onClose={() => setWinnerClosed(true)}
+                />
             )}
 
             <header className="topbar">
@@ -145,6 +156,13 @@ export const GameScreen = ({ state, mine, room }: GameScreenProps) => {
                         ? `${winner.name} won the game!`
                         : instruction(game, current, isMyTurn, legal.must_discard)}
                 </span>
+                {state.turn_deadline !== null && (
+                    <TurnTimer
+                        key={`${state.turn_deadline}:${state.server_time}`}
+                        deadline={state.turn_deadline}
+                        serverTime={state.server_time}
+                    />
+                )}
                 {(mine.hidden_points ?? 0) > 0 && (
                     <span className="muted" title="Your hidden Victory Point cards">
                         +{mine.hidden_points} hidden VP

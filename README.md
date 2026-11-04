@@ -11,6 +11,11 @@ the desert in the centre and a friendly robber that spares players with 2 points
 One click sets the rules we recommend for two players. The server checks every setting,
 and they cannot change once the game has started.
 
+A turn can have a time limit of 60 to 180 seconds, shown as a countdown to everyone. When it
+runs out, the server makes the moves the rules require (rolling, discarding, moving the robber)
+and passes the turn. After a game the host can start a rematch, which moves every player to a
+new room with the same seats and rules.
+
 <img src="docs/images/lobby.png" alt="The lobby with the rules recommended for two players" width="360">
 
 If a player leaves, anyone can hand their seat to a bot, and they can take it back by name.

@@ -18,7 +18,7 @@ class GameSettings:
     discard_limit: int = DISCARD_LIMIT
     desert: str = DESERT_RANDOM
     friendly_robber: bool = False
-    # Shown to the players only: there is no turn timer yet
+    # Seconds for each step of a turn; when they run out the server finishes it
     turn_seconds: Optional[int] = None
 
     def to_dict(self) -> Dict[str, Any]:

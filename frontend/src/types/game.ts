@@ -123,6 +123,12 @@ export interface PublicState {
   players: (LobbyPlayer | Player)[];
   settings: GameSettings;
   game: GameView | null;
+  /** Epoch seconds when the waited-on players run out of time; null without a timer. */
+  turn_deadline: number | null;
+  /** The server's epoch seconds when this state was produced, to correct clock skew. */
+  server_time: number;
+  /** The room the host opened for a rematch, once there is one. */
+  rematch_room_id: string | null;
 }
 
 export interface LegalMoves {
