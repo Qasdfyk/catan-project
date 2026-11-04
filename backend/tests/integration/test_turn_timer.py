@@ -9,12 +9,10 @@ from app.models.game import Building, BuildingType, TurnPhase
 from app.models.hex_lib import Hex, Vertex
 from app.models.player import DevCard
 from app.services.redis_service import TURN_DEADLINES_KEY
-from app.services.serializer import GameSerializer
-from rooms_api import CENTER, HEADERS, act, create_room, join, session
+from rooms_api import CENTER, HEADERS, act, create_room, edit_game, join, load_game, past_setup, session
 
 START = 1_000_000.0
 NEAR = Hex(1, -1, 0)
-FAR = Hex(-2, 2, 0)
 
 
 @pytest_asyncio.fixture
@@ -44,29 +42,6 @@ async def time_out(client, room_id, headers=HEADERS):
 
 async def deadline_score(room_id):
     return await app.state.redis.redis.zscore(TURN_DEADLINES_KEY, room_id)
-
-
-async def edit_game(room_id, change):
-    """Puts the stored game in the state a test needs, as a sequence of turns would."""
-    redis = app.state.redis
-    game = GameSerializer.dict_to_game(await redis.get_game_state(room_id))
-    change(game)
-    await redis.save_game_state(room_id, GameSerializer.game_to_dict(game))
-
-
-async def load_game(room_id):
-    return GameSerializer.dict_to_game(await app.state.redis.get_game_state(room_id))
-
-
-def past_setup(game):
-    game.setup_queue = []
-    game.setup_waiting_for_road = False
-    game.turn_phase = TurnPhase.ROLL_DICE
-    for seat, player in enumerate(game.players):
-        vertex = Vertex(Hex(-2 + 2 * seat, 0, 2 - 2 * seat), 0).get_canonical()
-        game.settlements[vertex] = Building(player.color, BuildingType.SETTLEMENT)
-        game.roads[vertex.get_touching_edges()[0].get_canonical()] = player.color
-        player.victory_points = 1
 
 
 @pytest.mark.asyncio

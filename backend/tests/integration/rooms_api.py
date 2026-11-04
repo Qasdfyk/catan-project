@@ -1,5 +1,9 @@
 """Requests the gateway and the browser make, shared by the integration tests."""
 from app.core.config import settings
+from app.main import app
+from app.models.game import Building, BuildingType, TurnPhase
+from app.models.hex_lib import Hex, Vertex
+from app.services.serializer import GameSerializer
 
 HEADERS = {"X-Internal-Key": settings.INTERNAL_API_KEY}
 CENTER = {"q": 0, "r": 0, "s": 0}
@@ -44,3 +48,30 @@ async def started_room(client):
     response = await act(client, host["room_id"], host["token"], "start_game")
     assert response.status_code == 200
     return host, guest
+
+
+async def edit_game(room_id, change):
+    """Puts the stored game in the state a test needs, as a sequence of turns would."""
+    redis = app.state.redis
+    game = GameSerializer.dict_to_game(await redis.get_game_state(room_id))
+    change(game)
+    await redis.save_game_state(room_id, GameSerializer.game_to_dict(game))
+
+
+async def load_game(room_id):
+    return GameSerializer.dict_to_game(await app.state.redis.get_game_state(room_id))
+
+
+SETUP_HEXES = [Hex(-2, 0, 2), Hex(0, 0, 0), Hex(2, 0, -2), Hex(0, -2, 2)]
+
+
+def past_setup(game):
+    """Gives everyone a settlement and a road, then hands the dice to the first player."""
+    game.setup_queue = []
+    game.setup_waiting_for_road = False
+    game.turn_phase = TurnPhase.ROLL_DICE
+    for player, h in zip(game.players, SETUP_HEXES[:len(game.players)], strict=True):
+        vertex = Vertex(h, 0).get_canonical()
+        game.settlements[vertex] = Building(player.color, BuildingType.SETTLEMENT)
+        game.roads[vertex.get_touching_edges()[0].get_canonical()] = player.color
+        player.victory_points = 1
