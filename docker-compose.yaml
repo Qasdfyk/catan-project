@@ -58,7 +58,7 @@ services:
       timeout: 3s
       retries: 10
 
-  # --- SERVICE 4: BOTS (fill empty seats, Go) ---
+  # --- SERVICE 4: BOTS (fill empty seats, turn timer, Go) ---
   bots:
     build:
       context: ./gateway
@@ -68,6 +68,8 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
       - GATEWAY_URL=ws://gateway:8080/ws
+      - BACKEND_URL=http://backend:8000
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-dev-internal-key}
       - BOT_DELAY_MS=${BOT_DELAY_MS:-900}
     depends_on:
       gateway:
