@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { GameScreen } from '../components/GameScreen';
 import { LobbyScreen } from '../components/LobbyScreen';
-import { getRoom, joinRoom } from '../net/api';
+import { getRoom, joinRematch, joinRoom } from '../net/api';
 import { clearSession, loadSession, saveSession } from '../net/session';
 import { useRoom } from '../net/useRoom';
 import type { RoomSession, RoomSummary } from '../types/game';
 
 export const RoomPage = () => {
     const { roomId = '' } = useParams();
+    // A rematch moves to another room on the same route, which must start from a fresh state
+    return <Room key={roomId} roomId={roomId} />;
+};
+
+const Room = ({ roomId }: { roomId: string }) => {
     const [session, setSession] = useState<RoomSession | null>(() => loadSession(roomId));
 
     const handleJoined = useCallback((joined: RoomSession) => {
@@ -32,10 +37,29 @@ interface ConnectedRoomProps {
 
 const ConnectedRoom = ({ session, onSessionLost }: ConnectedRoomProps) => {
     const room = useRoom(session);
+    const navigate = useNavigate();
+    const [rematchError, setRematchError] = useState('');
+    const rematchRoomId = room.publicState?.rematch_room_id ?? null;
 
     useEffect(() => {
         if (room.sessionLost) onSessionLost();
     }, [room.sessionLost, onSessionLost]);
+
+    // Every player follows the host into the new room, keeping their seat
+    useEffect(() => {
+        if (!rematchRoomId) return;
+        let cancelled = false;
+        joinRematch(session.room_id, session.token)
+            .then((joined) => {
+                if (cancelled) return;
+                saveSession(joined);
+                navigate(`/game/${joined.room_id}`);
+            })
+            .catch((err: Error) => {
+                if (!cancelled) setRematchError(err.message);
+            });
+        return () => { cancelled = true; };
+    }, [rematchRoomId, session, navigate]);
 
     if (!room.publicState || !room.privateState) {
         return <main className="center-page"><p className="muted">Connecting…</p></main>;
@@ -44,7 +68,14 @@ const ConnectedRoom = ({ session, onSessionLost }: ConnectedRoomProps) => {
     if (room.publicState.status === 'lobby') {
         return <LobbyScreen state={room.publicState} seat={session.seat} room={room} />;
     }
-    return <GameScreen state={room.publicState} mine={room.privateState} room={room} />;
+    return (
+        <GameScreen
+            state={room.publicState}
+            mine={room.privateState}
+            room={room}
+            rematchError={rematchError}
+        />
+    );
 };
 
 interface JoinFormProps {
