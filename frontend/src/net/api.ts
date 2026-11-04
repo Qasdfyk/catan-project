@@ -29,3 +29,10 @@ export const joinRoom = (roomId: string, name: string) =>
     request<RoomSession>(`/api/rooms/${roomId}/join`, withName(name));
 
 export const getRoom = (roomId: string) => request<RoomSummary>(`/api/rooms/${roomId}`);
+
+/** Takes the same seat in the room the host opened for a rematch. */
+export const joinRematch = (roomId: string, token: string) =>
+    request<RoomSession>(`/api/rooms/${roomId}/rematch`, {
+        method: 'POST',
+        body: JSON.stringify({ token }),
+    });

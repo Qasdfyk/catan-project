@@ -38,6 +38,8 @@ interface GameScreenProps {
     state: PublicState;
     mine: PrivateState;
     room: RoomConnection;
+    /** Why following the host into the rematch failed, if it did. */
+    rematchError: string;
 }
 
 const instruction = (game: GameView, current: Player, isMyTurn: boolean, mustDiscard: number): string => {
@@ -67,7 +69,7 @@ const instruction = (game: GameView, current: Player, isMyTurn: boolean, mustDis
     }
 };
 
-export const GameScreen = ({ state, mine, room }: GameScreenProps) => {
+export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps) => {
     const game = state.game as GameView;
     const players = state.players as Player[];
     const { send } = room;
@@ -135,8 +137,16 @@ export const GameScreen = ({ state, mine, room }: GameScreenProps) => {
 
     return (
         <div className={isMyTurn ? 'game my-turn' : 'game'}>
-            {winner && !winnerClosed && (
-                <WinnerDialog winner={winner} players={players} onClose={() => setWinnerClosed(true)} />
+            {winner && (!winnerClosed || rematchError) && (
+                <WinnerDialog
+                    winner={winner}
+                    players={players}
+                    isHost={state.host_seat === mine.seat}
+                    rematchStarted={state.rematch_room_id !== null}
+                    rematchError={rematchError}
+                    onRematch={() => send('rematch')}
+                    onClose={() => setWinnerClosed(true)}
+                />
             )}
 
             <header className="topbar">
