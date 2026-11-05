@@ -12,6 +12,7 @@ import { ResourceCards } from './ResourceCards';
 import { TradePanel } from './TradePanel';
 import { TurnTimer } from './TurnTimer';
 import { WinnerDialog } from './WinnerDialog';
+import { botLabel } from '../utils/bots';
 import { PLAYER_COLORS } from '../utils/labels';
 import { settingsSummary } from '../utils/settings';
 
@@ -203,7 +204,7 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
                                 <span className="player-name">
                                     {player.name}
                                     {player.seat === mine.seat && <span className="muted"> (you)</span>}
-                                    {player.is_bot && <span className="muted"> (bot)</span>}
+                                    {player.is_bot && <span className="muted"> ({botLabel(player.bot_level)})</span>}
                                     {!player.is_bot && !room.online.includes(player.seat) && !game.is_game_over && (
                                         <button
                                             className="link"
