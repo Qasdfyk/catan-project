@@ -2,6 +2,7 @@ package bot
 
 import (
 	"maps"
+	"math/rand/v2"
 	"slices"
 	"sort"
 )
@@ -12,15 +13,56 @@ var (
 	resources      = []string{"wood", "brick", "sheep", "wheat", "ore"}
 )
 
+// style is how one level plays. Every level chooses among the same legal
+// moves; a level only changes how carefully it chooses.
+type style struct {
+	// spotChoices picks randomly among this many of the best places to build
+	spotChoices int
+	// randomRobber moves the robber and steals without looking
+	randomRobber bool
+	// defensiveKnight plays a knight before rolling to free its own tile
+	defensiveKnight bool
+	// cardChance is the chance to play a card when one is playable
+	cardChance float64
+	// tradeFrom trades with the bank only when holding this many cards
+	tradeFrom int
+}
+
+var styles = map[string]style{
+	"easy":   {spotChoices: 3, randomRobber: true, cardChance: 0.3, tradeFrom: 8},
+	"medium": {spotChoices: 1, defensiveKnight: true, cardChance: 1},
+	// Plays as medium until it gets its own heuristics
+	"hard": {spotChoices: 1, defensiveKnight: true, cardChance: 1},
+}
+
+// DefaultLevel is used for a seat with no level or an unknown one.
+const DefaultLevel = "medium"
+
+// player is one decision: what the seat sees, how it plays and its dice.
+type player struct {
+	View
+	style
+	rng *rand.Rand
+}
+
 // Decide returns the seat's next action, or nil if it has nothing to do.
 // With fallback set the bot only does what cannot fail, to get out of a
-// situation where the server refused its plan.
-func Decide(view View, fallback bool) *Action {
+// situation where the server refused its plan. Levels that leave things to
+// chance draw from rng; nil stands for a fixed seed.
+func Decide(view View, fallback bool, level string, rng *rand.Rand) *Action {
 	game := view.Public.Game
 	legal := view.Private.Legal
 	if game == nil || legal == nil || game.IsGameOver {
 		return nil
 	}
+	look, ok := styles[level]
+	if !ok {
+		look = styles[DefaultLevel]
+	}
+	if rng == nil {
+		rng = rand.New(rand.NewPCG(1, 2))
+	}
+	p := player{view, look, rng}
 
 	if legal.MustDiscard > 0 {
 		return discard(view)
@@ -35,52 +77,56 @@ func Decide(view View, fallback bool) *Action {
 	switch game.TurnPhase {
 	case "setup":
 		if len(legal.Settlements) > 0 {
-			return &Action{"build_settlement", position(bestVertex(view, legal.Settlements))}
+			return &Action{"build_settlement", position(p.vertex(legal.Settlements))}
 		}
-		return &Action{"build_road", position(bestRoad(view, legal.Roads))}
+		return &Action{"build_road", position(p.road(legal.Roads))}
 	case "roll_dice":
-		if !fallback && robberOnMyTile(view) && slices.Contains(legal.PlayableDevCards, "knight") {
+		if !fallback && p.defensiveKnight && robberOnMyTile(view) && slices.Contains(legal.PlayableDevCards, "knight") {
 			return &Action{"play_knight", nil}
 		}
 		return &Action{"roll_dice", nil}
 	case "move_robber":
-		return &Action{"move_robber", map[string]any{"hex": bestRobberHex(view)}}
+		return &Action{"move_robber", map[string]any{"hex": p.robberHex()}}
 	case "steal":
-		return &Action{"steal", map[string]any{"victim_seat": richestTarget(view)}}
+		return &Action{"steal", map[string]any{"victim_seat": p.victim()}}
 	case "road_building":
-		return &Action{"build_road", position(bestRoad(view, legal.Roads))}
+		return &Action{"build_road", position(p.road(legal.Roads))}
 	case "main_phase":
 		if fallback {
 			return &Action{"end_turn", nil}
 		}
-		return mainPhase(view)
+		return p.mainPhase()
 	}
 	return nil
 }
 
-func mainPhase(view View) *Action {
-	legal := view.Private.Legal
-	hand := view.Private.Resources
+func (p player) mainPhase() *Action {
+	legal := p.Private.Legal
+	hand := p.Private.Resources
 
 	switch {
 	case len(legal.Cities) > 0:
-		return &Action{"upgrade_city", position(bestVertex(view, legal.Cities))}
+		return &Action{"upgrade_city", position(p.vertex(legal.Cities))}
 	case len(legal.Settlements) > 0:
-		return &Action{"build_settlement", position(bestVertex(view, legal.Settlements))}
+		return &Action{"build_settlement", position(p.vertex(legal.Settlements))}
 	}
 
-	if card := playCard(view); card != nil {
-		return card
+	if p.cardChance >= 1 || p.rng.Float64() < p.cardChance {
+		if card := playCard(p.View); card != nil {
+			return card
+		}
 	}
 
 	if legal.CanBuyDevCard {
 		return &Action{"buy_dev_card", nil}
 	}
-	if len(legal.Roads) > 0 && countOwn(view, "settlement")+countOwn(view, "city") < 9 {
-		return &Action{"build_road", position(bestRoad(view, legal.Roads))}
+	if len(legal.Roads) > 0 && countOwn(p.View, "settlement")+countOwn(p.View, "city") < 9 {
+		return &Action{"build_road", position(p.road(legal.Roads))}
 	}
-	if trade := bankTrade(view, hand); trade != nil {
-		return trade
+	if sum(hand) >= p.tradeFrom {
+		if trade := bankTrade(p.View, hand); trade != nil {
+			return trade
+		}
 	}
 	return &Action{"end_turn", nil}
 }
@@ -187,30 +233,40 @@ func vertexValue(view View, at point) int {
 	return value
 }
 
-func bestVertex(view View, options []Position) Position {
-	best, bestValue := options[0], -1
-	for _, option := range options {
-		if value := vertexValue(view, option.vertex()); value > bestValue {
-			best, bestValue = option, value
-		}
+func (p player) vertex(options []Position) Position {
+	values := make([]int, len(options))
+	for i, option := range options {
+		values[i] = vertexValue(p.View, option.vertex())
 	}
-	return best
+	return p.choose(options, values)
 }
 
-// bestRoad heads for the most productive corner where a settlement could stand.
-func bestRoad(view View, options []Position) Position {
-	best, bestValue := options[0], -1
-	for _, option := range options {
+// road heads for the most productive corner where a settlement could stand.
+func (p player) road(options []Position) Position {
+	values := make([]int, len(options))
+	for i, option := range options {
+		values[i] = -1
 		for _, end := range option.edgeEnds() {
-			if !buildable(view, end) {
-				continue
-			}
-			if value := vertexValue(view, end); value > bestValue {
-				best, bestValue = option, value
+			if buildable(p.View, end) {
+				values[i] = max(values[i], vertexValue(p.View, end))
 			}
 		}
 	}
-	return best
+	return p.choose(options, values)
+}
+
+// choose takes one of the spotChoices best options. Ties keep their order, so
+// with one choice it is the first of the best.
+func (p player) choose(options []Position, values []int) Position {
+	order := make([]int, len(options))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(i, j int) bool { return values[order[i]] > values[order[j]] })
+	if top := min(p.spotChoices, len(order)); top > 1 {
+		return options[order[p.rng.IntN(top)]]
+	}
+	return options[order[0]]
 }
 
 func buildable(view View, at point) bool {
@@ -258,21 +314,28 @@ func tileHarm(view View, hex Hex) int {
 	return harm
 }
 
-func bestRobberHex(view View) Hex {
-	options := view.Private.Legal.RobberHexes
-	best, bestHarm := options[0], tileHarm(view, options[0])
+func (p player) robberHex() Hex {
+	options := p.Private.Legal.RobberHexes
+	if p.randomRobber {
+		return options[p.rng.IntN(len(options))]
+	}
+	best, bestHarm := options[0], tileHarm(p.View, options[0])
 	for _, option := range options[1:] {
-		if harm := tileHarm(view, option); harm > bestHarm {
+		if harm := tileHarm(p.View, option); harm > bestHarm {
 			best, bestHarm = option, harm
 		}
 	}
 	return best
 }
 
-func richestTarget(view View) int {
-	targets := slices.Clone(view.Private.Legal.StealTargets)
+// victim is the player with the most cards, or anyone for a careless robber.
+func (p player) victim() int {
+	targets := slices.Clone(p.Private.Legal.StealTargets)
+	if p.randomRobber {
+		return targets[p.rng.IntN(len(targets))]
+	}
 	sort.Slice(targets, func(i, j int) bool {
-		a, b := view.Public.Players[targets[i]], view.Public.Players[targets[j]]
+		a, b := p.Public.Players[targets[i]], p.Public.Players[targets[j]]
 		return a.CardCount > b.CardCount
 	})
 	return targets[0]

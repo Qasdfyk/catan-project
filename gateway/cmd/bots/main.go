@@ -55,7 +55,7 @@ func main() {
 			return
 		}
 		go func() {
-			bot.Play(ctx, url, seat, time.Duration(delayMs)*time.Millisecond)
+			bot.Play(ctx, url, seat, bot.Options{Delay: time.Duration(delayMs) * time.Millisecond})
 			// Forgotten only when the seat is really over, not on shutdown
 			if ctx.Err() == nil {
 				client.SRem(context.Background(), activeBotsKey, raw)

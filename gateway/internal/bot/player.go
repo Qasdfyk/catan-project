@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"math/rand/v2"
+	"reflect"
 	"time"
 
 	"github.com/coder/websocket"
@@ -12,13 +14,16 @@ import (
 
 const (
 	reconnectDelay = 2 * time.Second
+	retryDelay     = time.Second
 	maxReadBytes   = 1 << 20
 )
 
-// Seat identifies the place a bot plays in.
+// Seat identifies the place a bot plays in and how well it plays.
 type Seat struct {
 	RoomID string `json:"room_id"`
 	Token  string `json:"token"`
+	// Level is "easy", "medium" or "hard"; empty means DefaultLevel
+	Level string `json:"level"`
 }
 
 type serverMessage struct {
@@ -32,10 +37,27 @@ type serverMessage struct {
 // errSeatGone ends a bot whose room finished or no longer accepts it.
 var errSeatGone = errors.New("seat is gone")
 
+// Options tune how a bot plays and let a caller watch it.
+type Options struct {
+	// Delay is the thinking time before each move
+	Delay time.Duration
+	// Rand is for the levels that leave things to chance; nil seeds one at random
+	Rand *rand.Rand
+	// OnState sees every state the seat receives, on the reading goroutine
+	OnState func(View)
+	// OnAction sees every move just before it is sent
+	OnAction func(View, Action)
+	// OnRefused is told when the server refuses a move
+	OnRefused func(message string)
+}
+
 // Play keeps one bot in its seat until the game ends, reconnecting if needed.
-func Play(ctx context.Context, url string, seat Seat, delay time.Duration) {
+func Play(ctx context.Context, url string, seat Seat, options Options) {
+	if options.Rand == nil {
+		options.Rand = rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64()))
+	}
 	for ctx.Err() == nil {
-		err := playConnection(ctx, url, seat, delay)
+		err := playConnection(ctx, url, seat, options)
 		if errors.Is(err, errSeatGone) {
 			return
 		}
@@ -46,7 +68,7 @@ func Play(ctx context.Context, url string, seat Seat, delay time.Duration) {
 	}
 }
 
-func playConnection(ctx context.Context, url string, seat Seat, delay time.Duration) error {
+func playConnection(ctx context.Context, url string, seat Seat, options Options) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -64,13 +86,18 @@ func playConnection(ctx context.Context, url string, seat Seat, delay time.Durat
 
 	// The reader keeps only the newest view: thinking on an old one is pointless.
 	latest := make(chan View, 1)
-	refused := make(chan struct{}, 1)
+	refused := make(chan string, 1)
 	readErr := make(chan error, 1)
-	go func() { readErr <- read(ctx, conn, latest, refused) }()
+	go func() { readErr <- read(ctx, conn, latest, refused, options) }()
 
 	var view View
 	haveView, fallback := false, false
 	request := 0
+	// The last move sent and the state it was chosen on
+	var sent Action
+	sentVersion := -1
+	var retry <-chan time.Time
+	retrying := false
 
 	for {
 		select {
@@ -81,9 +108,11 @@ func playConnection(ctx context.Context, url string, seat Seat, delay time.Durat
 		case view = <-latest:
 			haveView = true
 			fallback = false
-		case <-refused:
-			log.Printf("bot in %s: move refused", seat.RoomID)
+		case reason := <-refused:
+			log.Printf("bot in %s: move refused: %s", seat.RoomID, reason)
 			fallback = true
+		case <-retry:
+			retry, retrying = nil, true
 		}
 		if !haveView {
 			continue
@@ -92,25 +121,37 @@ func playConnection(ctx context.Context, url string, seat Seat, delay time.Durat
 			return errSeatGone
 		}
 
-		action := Decide(view, fallback)
+		action := Decide(view, fallback, seat.Level, options.Rand)
 		if action == nil {
 			continue
 		}
 
 		// Thinking time, so people can follow; a newer view replaces this one
 		select {
-		case <-time.After(delay):
+		case <-time.After(options.Delay):
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 		select {
 		case view = <-latest:
-			if action = Decide(view, fallback); action == nil {
+			if action = Decide(view, fallback, seat.Level, options.Rand); action == nil {
 				continue
 			}
 		default:
 		}
 
+		// The server refused this very move on this very state. Sending it again
+		// at once would only spin, so it waits for a new state, or retries in a
+		// while in case the refusal was the rate limit.
+		if !retrying && view.Public.Version == sentVersion && reflect.DeepEqual(*action, sent) {
+			retry = time.After(retryDelay)
+			continue
+		}
+		sent, sentVersion, retrying = *action, view.Public.Version, false
+
+		if options.OnAction != nil {
+			options.OnAction(view, *action)
+		}
 		request++
 		payload := action.Payload
 		if payload == nil {
@@ -125,7 +166,7 @@ func playConnection(ctx context.Context, url string, seat Seat, delay time.Durat
 	}
 }
 
-func read(ctx context.Context, conn *websocket.Conn, latest chan View, refused chan struct{}) error {
+func read(ctx context.Context, conn *websocket.Conn, latest chan View, refused chan string, options Options) error {
 	for {
 		_, data, err := conn.Read(ctx)
 		if err != nil {
@@ -142,6 +183,9 @@ func read(ctx context.Context, conn *websocket.Conn, latest chan View, refused c
 			if json.Unmarshal(message.Public, &view.Public) != nil || json.Unmarshal(message.Private, &view.Private) != nil {
 				continue
 			}
+			if options.OnState != nil {
+				options.OnState(view)
+			}
 			select {
 			case <-latest:
 			default:
@@ -151,8 +195,11 @@ func read(ctx context.Context, conn *websocket.Conn, latest chan View, refused c
 			if message.Fatal {
 				return errSeatGone
 			}
+			if options.OnRefused != nil {
+				options.OnRefused(message.Message)
+			}
 			select {
-			case refused <- struct{}{}:
+			case refused <- message.Message:
 			default:
 			}
 		}
