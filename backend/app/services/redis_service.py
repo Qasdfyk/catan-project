@@ -46,9 +46,9 @@ class RedisService:
     async def publish_event(self, event: dict):
         await self.redis.publish(EVENTS_CHANNEL, json.dumps(event))
 
-    async def summon_bot(self, room_id: str, token: str):
+    async def summon_bot(self, room_id: str, token: str, level: str):
         """Asks the bot service to take a seat. The set lets it recover after a restart."""
-        bot = json.dumps({"room_id": room_id, "token": token})
+        bot = json.dumps({"room_id": room_id, "token": token, "level": level})
         await self.redis.sadd(ACTIVE_BOTS_KEY, bot)
         await self.redis.publish(BOTS_CHANNEL, bot)
 

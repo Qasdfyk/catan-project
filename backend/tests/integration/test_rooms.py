@@ -334,6 +334,121 @@ async def test_starting_summons_bots_with_their_tokens(client):
 
 
 @pytest.mark.asyncio
+async def test_bots_play_at_the_level_chosen_for_them(client):
+    host = await create_room(client)
+    await act(client, host["room_id"], host["token"], "add_bot")
+    await act(client, host["room_id"], host["token"], "add_bot", {"level": "easy"})
+    await act(client, host["room_id"], host["token"], "set_bot_level", {"seat": 1, "level": "hard"})
+    guest = (await join(client, host["room_id"], "Bob")).json()
+
+    players = (await session(client, host["room_id"], guest["token"]))["public"]["players"]
+    assert [p["bot_level"] for p in players] == [None, "hard", "easy", None]
+
+    await act(client, host["room_id"], host["token"], "start_game")
+
+    players = (await session(client, host["room_id"], guest["token"]))["public"]["players"]
+    assert [p["bot_level"] for p in players] == [None, "hard", "easy", None]
+    await clear_bots()
+
+
+@pytest.mark.asyncio
+async def test_summoned_bots_know_their_level(client):
+    host = await create_room(client)
+    await act(client, host["room_id"], host["token"], "add_bot", {"level": "easy"})
+    await act(client, host["room_id"], host["token"], "add_bot")
+    room = await app.state.redis.get_room(host["room_id"])
+    pubsub = app.state.redis.redis.pubsub()
+    await pubsub.subscribe(BOTS_CHANNEL)
+    await pubsub.get_message(timeout=1)
+
+    await act(client, host["room_id"], host["token"], "start_game")
+
+    messages = [await pubsub.get_message(ignore_subscribe_messages=True, timeout=2) for _ in range(2)]
+    await pubsub.aclose()
+    expected = [
+        {"room_id": host["room_id"], "token": room["seats"][1]["token"], "level": "easy"},
+        {"room_id": host["room_id"], "token": room["seats"][2]["token"], "level": "medium"},
+    ]
+    assert [json.loads(m["data"]) for m in messages] == expected
+    stored = await app.state.redis.redis.smembers(ACTIVE_BOTS_KEY)
+    assert all(json.dumps(bot) in stored for bot in expected)
+    await clear_bots()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("level", ["expert", "", None, 2, ["easy"]])
+async def test_bot_level_must_be_known(client, level):
+    host = await create_room(client)
+    await act(client, host["room_id"], host["token"], "add_bot")
+
+    added = await act(client, host["room_id"], host["token"], "add_bot", {"level": level})
+    changed = await act(client, host["room_id"], host["token"], "set_bot_level", {"seat": 1, "level": level})
+
+    for response in (added, changed):
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Choose easy, medium or hard."
+    players = (await session(client, host["room_id"], host["token"]))["public"]["players"]
+    assert [p["bot_level"] for p in players] == [None, "medium"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("target", [0, 2, True, None, "1"])
+async def test_level_is_set_only_on_bot_seats(client, target):
+    host = await create_room(client)
+    await act(client, host["room_id"], host["token"], "add_bot")
+
+    response = await act(client, host["room_id"], host["token"], "set_bot_level", {"seat": target, "level": "easy"})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "That seat has no bot."
+
+
+@pytest.mark.asyncio
+async def test_only_the_host_sets_bot_levels_in_the_lobby(client):
+    host = await create_room(client)
+    await act(client, host["room_id"], host["token"], "add_bot")
+    guest = (await join(client, host["room_id"], "Bob")).json()
+
+    by_guest = await act(client, host["room_id"], guest["token"], "set_bot_level", {"seat": 1, "level": "easy"})
+    await act(client, host["room_id"], host["token"], "start_game")
+    after_start = await act(client, host["room_id"], host["token"], "set_bot_level", {"seat": 1, "level": "easy"})
+
+    assert by_guest.status_code == 400
+    assert "host" in by_guest.json()["detail"]
+    assert after_start.status_code == 400
+    assert "started" in after_start.json()["detail"]
+    players = (await session(client, host["room_id"], host["token"]))["public"]["players"]
+    assert players[1]["bot_level"] == "medium"
+    await clear_bots()
+
+
+def test_bots_of_older_rooms_play_at_medium():
+    room = {"room_id": "r", "version": 1, "status": "lobby", "host_seat": 0,
+            "seats": [{"name": "Alice"}, {"name": "Ada", "bot": True}]}
+
+    assert [p["bot_level"] for p in public_view(room, None)["players"]] == [None, "medium"]
+
+
+@pytest.mark.asyncio
+async def test_bots_of_older_rooms_are_summoned_at_medium(client):
+    host = await create_room(client)
+    await act(client, host["room_id"], host["token"], "add_bot")
+    room = await app.state.redis.get_room(host["room_id"])
+    del room["seats"][1]["level"]
+    await app.state.redis.save_room(host["room_id"], room)
+    pubsub = app.state.redis.redis.pubsub()
+    await pubsub.subscribe(BOTS_CHANNEL)
+    await pubsub.get_message(timeout=1)
+
+    await act(client, host["room_id"], host["token"], "start_game")
+
+    message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=2)
+    await pubsub.aclose()
+    assert json.loads(message["data"])["level"] == "medium"
+    await clear_bots()
+
+
+@pytest.mark.asyncio
 async def test_bot_tokens_stay_out_of_public_state(client):
     host = await create_room(client)
     await act(client, host["room_id"], host["token"], "add_bot")
@@ -373,7 +488,20 @@ async def test_bot_can_take_over_a_seat_of_a_player_who_left(client):
     assert response.status_code == 200
     state = await session(client, host["room_id"], host["token"])
     assert state["public"]["players"][guest["seat"]]["is_bot"] is True
+    assert state["public"]["players"][guest["seat"]]["bot_level"] == "medium"
     assert (await act(client, host["room_id"], guest["token"], "end_turn")).status_code == 401
+    await clear_bots()
+
+
+@pytest.mark.asyncio
+async def test_bot_taking_over_a_seat_plays_at_medium(client):
+    host, guest = await started_room(client)
+
+    await act(client, host["room_id"], host["token"], "replace_with_bot", {"seat": guest["seat"]})
+
+    token = (await app.state.redis.get_room(host["room_id"]))["seats"][guest["seat"]]["token"]
+    bot = {"room_id": host["room_id"], "token": token, "level": "medium"}
+    assert await app.state.redis.redis.smembers(ACTIVE_BOTS_KEY) == {json.dumps(bot)}
     await clear_bots()
 
 
@@ -424,6 +552,7 @@ async def test_player_takes_the_seat_back_from_the_bot(client):
     assert returned.json()["seat"] == guest["seat"]
     state = await session(client, host["room_id"], returned.json()["token"])
     assert state["public"]["players"][guest["seat"]]["is_bot"] is False
+    assert state["public"]["players"][guest["seat"]]["bot_level"] is None
     assert (await act(client, host["room_id"], bot_token, "end_turn")).status_code == 401
     await clear_bots()
 

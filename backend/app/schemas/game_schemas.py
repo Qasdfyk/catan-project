@@ -17,6 +17,11 @@ class PlayerNameRequest(BaseModel):
         return value
 
 
+BOT_LEVELS = ("easy", "medium", "hard")
+# Also what the bots of rooms stored before levels existed play at
+DEFAULT_BOT_LEVEL = "medium"
+
+
 class RoomSession(BaseModel):
     room_id: str
     token: str
