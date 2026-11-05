@@ -1,7 +1,5 @@
 # Catan
 
-[![CI](https://github.com/Qasdfyk/catan-project/actions/workflows/ci.yml/badge.svg)](https://github.com/Qasdfyk/catan-project/actions/workflows/ci.yml)
-
 Catan for 2–4 players in the browser, with friends over an invite link or against bots.
 The full base game: setup, dice, building, the robber, development cards, bank, port and
 player trade, Longest Road, Largest Army and a win at 10 points, plus chat.
@@ -113,7 +111,8 @@ cd gateway && go test -race ./...
 cd frontend && npm test && npm run lint && npm run build
 ```
 
-CI runs all of these, then builds the compose stack and plays a game in a browser.
+`scripts/check.sh` runs all of these, and `scripts/check.sh --e2e` then also plays a game in a
+browser against bots. It replaces CI, so it runs before every merge.
 
 Backend integration tests need Redis on `localhost:6379`. `tests/simulation` plays whole
 random games through serialization and checks the rules after every action.
