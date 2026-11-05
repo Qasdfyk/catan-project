@@ -46,6 +46,7 @@ type Game struct {
 	TurnPhase   string         `json:"turn_phase"`
 	CurrentSeat int            `json:"current_seat"`
 	IsGameOver  bool           `json:"is_game_over"`
+	WinnerSeat  *int           `json:"winner_seat"`
 	RobberHex   *Hex           `json:"robber_hex"`
 	BoardTiles  []Tile         `json:"board_tiles"`
 	Settlements []Building     `json:"settlements"`
@@ -74,20 +75,21 @@ type Legal struct {
 type Private struct {
 	Seat       int            `json:"seat"`
 	Resources  map[string]int `json:"resources"`
+	DevCards   []string       `json:"dev_cards"`
 	TradeRates map[string]int `json:"trade_rates"`
 	Legal      *Legal         `json:"legal"`
 }
 
 // View is what one seat can see of the game.
 type View struct {
-	Public  Public
-	Private Private
+	Public  Public  `json:"public"`
+	Private Private `json:"private"`
 }
 
 // Action is a message for the server.
 type Action struct {
-	Name    string
-	Payload map[string]any
+	Name    string         `json:"name"`
+	Payload map[string]any `json:"payload"`
 }
 
 // The geometry below only compares distances, in units of one hex side.

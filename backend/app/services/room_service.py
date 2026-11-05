@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 
 from app.models.game import GameState
 from app.models.settings import GameSettings
-from app.schemas.game_schemas import RoomSession, SettingsUpdate
+from app.schemas.game_schemas import BOT_LEVELS, DEFAULT_BOT_LEVEL, RoomSession, SettingsUpdate
 from app.services.actions import apply_action
 from app.services.redis_service import RedisService
 from app.services.serializer import GameSerializer
@@ -131,9 +131,11 @@ class RoomService:
                 await self._summon_bots(room)
                 return
             elif action_type == "add_bot":
-                self._add_bot(room, seat)
+                self._add_bot(room, seat, payload)
             elif action_type == "remove_bot":
                 self._remove_bot(room, seat, payload.get("seat"))
+            elif action_type == "set_bot_level":
+                self._set_bot_level(room, seat, payload)
             elif action_type == "update_settings":
                 self._update_settings(room, seat, payload)
             elif action_type == "replace_with_bot":
@@ -197,25 +199,45 @@ class RoomService:
         if room["status"] != "lobby":
             raise RoomError("The game has already started.")
 
+    @staticmethod
+    def _bot_level(payload: Dict[str, Any]) -> str:
+        level = payload.get("level", DEFAULT_BOT_LEVEL)
+        if level not in BOT_LEVELS:
+            raise RoomError("Choose easy, medium or hard.")
+        return level
+
+    @staticmethod
+    def _bot_seat(room: Dict[str, Any], target: Any) -> Dict[str, Any]:
+        seats = room["seats"]
+        if not isinstance(target, int) or isinstance(target, bool) or not 0 <= target < len(seats) or not seats[target].get("bot"):
+            raise RoomError("That seat has no bot.")
+        return seats[target]
+
     @classmethod
-    def _add_bot(cls, room: Dict[str, Any], seat: int):
+    def _add_bot(cls, room: Dict[str, Any], seat: int, payload: Dict[str, Any]):
         cls._verify_lobby_host(room, seat)
+        level = cls._bot_level(payload)
         if len(room["seats"]) >= MAX_SEATS:
             raise RoomConflict("The room is full.")
         taken = {entry["name"].casefold() for entry in room["seats"]}
         name = next(n for n in BOT_NAMES if n.casefold() not in taken)
-        room["seats"].append({"name": name, "token": secrets.token_urlsafe(24), "bot": True})
+        room["seats"].append({"name": name, "token": secrets.token_urlsafe(24), "bot": True, "level": level})
 
     @classmethod
     def _remove_bot(cls, room: Dict[str, Any], seat: int, target: Any):
         cls._verify_lobby_host(room, seat)
         seats = room["seats"]
-        if not isinstance(target, int) or not 0 <= target < len(seats) or not seats[target].get("bot"):
-            raise RoomError("That seat has no bot.")
+        cls._bot_seat(room, target)
         # Seats must not shift: the gateway routes private state by seat number
         if target != len(seats) - 1:
             raise RoomError("Only the last seat can be freed.")
         seats.pop()
+
+    @classmethod
+    def _set_bot_level(cls, room: Dict[str, Any], seat: int, payload: Dict[str, Any]):
+        cls._verify_lobby_host(room, seat)
+        entry = cls._bot_seat(room, payload.get("seat"))
+        entry["level"] = cls._bot_level(payload)
 
     @classmethod
     def _update_settings(cls, room: Dict[str, Any], seat: int, payload: Dict[str, Any]):
@@ -240,9 +262,9 @@ class RoomService:
         if target in await self.redis.online_seats(room["room_id"], len(seats)):
             raise RoomError("That player is connected.")
 
-        seats[target].update(token=secrets.token_urlsafe(24), bot=True, replaced=True)
+        seats[target].update(token=secrets.token_urlsafe(24), bot=True, replaced=True, level=DEFAULT_BOT_LEVEL)
         await self._commit(room, game)
-        await self.redis.summon_bot(room["room_id"], seats[target]["token"])
+        await self.redis.summon_bot(room["room_id"], seats[target]["token"], DEFAULT_BOT_LEVEL)
 
     async def _rematch(self, room: Dict[str, Any], seat: int) -> bool:
         """
@@ -261,9 +283,9 @@ class RoomService:
             new_entry = {"name": entry["name"], "token": secrets.token_urlsafe(24)}
             if entry.get("replaced"):
                 # A bot keeps the seat until the player who left returns by name
-                new_entry.update(bot=True, replaced=True)
+                new_entry.update(bot=True, replaced=True, level=DEFAULT_BOT_LEVEL)
             elif entry.get("bot"):
-                new_entry["bot"] = True
+                new_entry.update(bot=True, level=entry.get("level", DEFAULT_BOT_LEVEL))
             seats.append(new_entry)
 
         rematch = {
@@ -284,7 +306,7 @@ class RoomService:
     async def _summon_bots(self, room: Dict[str, Any]):
         for entry in room["seats"]:
             if entry.get("bot"):
-                await self.redis.summon_bot(room["room_id"], entry["token"])
+                await self.redis.summon_bot(room["room_id"], entry["token"], entry.get("level", DEFAULT_BOT_LEVEL))
 
     @staticmethod
     def _start_game(room: Dict[str, Any], seat: int) -> GameState:

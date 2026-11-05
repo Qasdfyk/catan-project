@@ -56,10 +56,14 @@ export type DevCard = 'knight' | 'victory_point' | 'road_building' | 'year_of_pl
 
 export type Cards = Partial<Record<Resource, number>>;
 
+export type BotLevel = 'easy' | 'medium' | 'hard';
+
 export interface LobbyPlayer {
   seat: number;
   name: string;
   is_bot: boolean;
+  /** How well the bot plays; null for people. */
+  bot_level: BotLevel | null;
 }
 
 export interface Player extends LobbyPlayer {

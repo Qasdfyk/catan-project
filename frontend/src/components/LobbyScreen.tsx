@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import type { RoomConnection } from '../net/useRoom';
-import type { PublicState } from '../types/game';
+import type { BotLevel, PublicState } from '../types/game';
 import { SettingsPanel } from './SettingsPanel';
+import { botLabel, BOT_LEVEL_LABELS, botLevelOptions } from '../utils/bots';
 
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 4;
@@ -41,7 +42,25 @@ export const LobbyScreen = ({ state, seat, room }: LobbyScreenProps) => {
                             {player.name}
                             {player.seat === state.host_seat && <span className="muted"> · host</span>}
                             {player.seat === seat && <span className="muted"> · you</span>}
-                            {player.is_bot && <span className="muted"> · bot</span>}
+                            {player.is_bot && !isHost && <span className="muted"> · {botLabel(player.bot_level)}</span>}
+                            {player.is_bot && isHost && (
+                                <>
+                                    <span className="muted"> · bot</span>
+                                    <select
+                                        className="bot-level"
+                                        aria-label={`Level of ${player.name}`}
+                                        value={player.bot_level ?? 'medium'}
+                                        onChange={(event) => room.send('set_bot_level', {
+                                            seat: player.seat,
+                                            level: event.target.value as BotLevel,
+                                        })}
+                                    >
+                                        {botLevelOptions(player.bot_level).map((level) => (
+                                            <option key={level} value={level}>{BOT_LEVEL_LABELS[level]}</option>
+                                        ))}
+                                    </select>
+                                </>
+                            )}
                             {isHost && player.is_bot && player.seat === state.players.length - 1 && (
                                 <button
                                     className="link"

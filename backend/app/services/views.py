@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 from app.models.game import TRADABLE_RESOURCES, GameState, TurnPhase
 from app.models.hex_lib import Edge, Hex, Vertex
 from app.models.settings import GameSettings
+from app.schemas.game_schemas import DEFAULT_BOT_LEVEL
 from app.services.serializer import GameSerializer
 
 PUBLIC_GAME_FIELDS = (
@@ -43,6 +44,10 @@ def _offer(game: GameState) -> Optional[Dict[str, Any]]:
     }
 
 
+def _bot_level(entry: Dict[str, Any]) -> Optional[str]:
+    return entry.get("level", DEFAULT_BOT_LEVEL) if entry.get("bot") else None
+
+
 def public_view(room: Dict[str, Any], game: Optional[GameState]) -> Dict[str, Any]:
     view: Dict[str, Any] = {
         "room_id": room["room_id"],
@@ -59,7 +64,7 @@ def public_view(room: Dict[str, Any], game: Optional[GameState]) -> Dict[str, An
 
     if game is None:
         view["players"] = [
-            {"seat": seat, "name": entry["name"], "is_bot": entry.get("bot", False)}
+            {"seat": seat, "name": entry["name"], "is_bot": entry.get("bot", False), "bot_level": _bot_level(entry)}
             for seat, entry in enumerate(room["seats"])
         ]
         view["game"] = None
@@ -71,6 +76,7 @@ def public_view(room: Dict[str, Any], game: Optional[GameState]) -> Dict[str, An
             "seat": seat,
             "name": player.name,
             "is_bot": room["seats"][seat].get("bot", False),
+            "bot_level": _bot_level(room["seats"][seat]),
             "color": player.color.value,
             # Hidden cards are revealed when they can no longer be used against the owner
             "victory_points": player.victory_points + (player.hidden_points() if game.is_game_over else 0),

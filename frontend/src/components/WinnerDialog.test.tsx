@@ -8,6 +8,7 @@ const player = (seat: number, name: string, points: number): Player => ({
     seat,
     name,
     is_bot: false,
+    bot_level: null,
     color: 'red',
     victory_points: points,
     card_count: 0,
