@@ -113,7 +113,7 @@ cd frontend && npm test && npm run lint && npm run build
 ```
 
 `scripts/check.sh` runs all of these, and `scripts/check.sh --e2e` then also plays a game in a
-browser against bots. It replaces CI, so it runs before every merge.
+browser against 3 hard bots. It replaces CI, so it runs before every merge.
 
 Backend integration tests need Redis on `localhost:6379`. `tests/simulation` plays whole
 random games through serialization and checks the rules after every action.
@@ -129,5 +129,5 @@ cd e2e && npm ci && npx playwright install chromium
 BASE_URL=http://localhost:5173 PLAYERS=2 BOTS=0 npm test
 ```
 
-`BOTS` adds bots to the room, and `PLAYERS` sets the number of tabs. A game takes several
-minutes, because the tabs play by clicking, with a simple strategy.
+`BOTS` adds bots to the room, `BOT_LEVEL` sets their level, and `PLAYERS` sets the number of
+tabs. A game takes several minutes, because the tabs play by clicking, with a simple strategy.
