@@ -16,9 +16,10 @@ new room with the same seats and rules.
 
 <img src="docs/images/lobby.png" alt="The lobby with the rules recommended for two players" width="360">
 
-Bots play at two levels, chosen by the host for each bot. In 400 games against three medium
-bots an easy bot won 10% of the time, against a fair share of 25%
-([docs/benchmarks.md](docs/benchmarks.md#bot-tournament)).
+Bots play at three levels, chosen by the host for each bot. In 400 games against three medium
+bots an easy bot won 10% of the time and a hard bot 71.5%, against a fair share of 25%
+([docs/benchmarks.md](docs/benchmarks.md#bot-tournament)). The hard bot saves for a goal,
+plans its roads toward the best free spot and offers trades to the other players.
 If a player leaves, anyone can hand their seat to a bot, and they can take it back by name.
 Shortcuts in the game: `R` rolls, `E` ends the turn, `Esc` leaves build mode.
 

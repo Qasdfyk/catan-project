@@ -46,10 +46,10 @@ describe('LobbyScreen', () => {
         const easy = select(markup, 'Ada');
         expect(easy).toContain('<option value="easy" selected="">Easy</option>');
         expect(easy).toContain('<option value="medium">Medium</option>');
-        expect(easy).not.toContain('Hard');
+        expect(easy).toContain('<option value="hard">Hard</option>');
     });
 
-    it('keeps a level the host cannot pick yet', () => {
+    it('selects the level each bot has', () => {
         expect(select(render(0), 'Boole')).toContain('<option value="hard" selected="">Hard</option>');
     });
 
