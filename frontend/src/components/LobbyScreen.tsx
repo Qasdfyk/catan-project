@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { RoomConnection } from '../net/useRoom';
 import type { BotLevel, PublicState } from '../types/game';
 import { SettingsPanel } from './SettingsPanel';
-import { botLabel, BOT_LEVEL_LABELS, botLevelOptions } from '../utils/bots';
+import { botLabel, BOT_LEVEL_LABELS, BOT_LEVELS } from '../utils/bots';
 
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 4;
@@ -55,7 +55,7 @@ export const LobbyScreen = ({ state, seat, room }: LobbyScreenProps) => {
                                             level: event.target.value as BotLevel,
                                         })}
                                     >
-                                        {botLevelOptions(player.bot_level).map((level) => (
+                                        {BOT_LEVELS.map((level) => (
                                             <option key={level} value={level}>{BOT_LEVEL_LABELS[level]}</option>
                                         ))}
                                     </select>

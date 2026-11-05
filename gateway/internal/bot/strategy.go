@@ -26,13 +26,28 @@ type style struct {
 	cardChance float64
 	// tradeFrom trades with the bank only when holding this many cards
 	tradeFrom int
+
+	// The hard level's own heuristics, each on its own switch so that what
+	// it adds can be measured:
+	// planner saves for a goal, trades toward it and keeps the hand small
+	planner bool
+	// spots rates corners by scarcity, variety and ports, and plans roads
+	spots bool
+	// leader aims the robber and the steal at the leader
+	leader bool
+	// offers trades with players and answers their offers by the goal
+	offers bool
+	// longestRoad builds roads to take the Longest Road when it is close
+	longestRoad bool
 }
 
 var styles = map[string]style{
 	"easy":   {spotChoices: 3, randomRobber: true, cardChance: 0.3, tradeFrom: 8},
 	"medium": {spotChoices: 1, defensiveKnight: true, cardChance: 1},
-	// Plays as medium until it gets its own heuristics
-	"hard": {spotChoices: 1, defensiveKnight: true, cardChance: 1},
+	"hard": {
+		spotChoices: 1, defensiveKnight: true, cardChance: 1,
+		planner: true, spots: true, leader: true, offers: true, longestRoad: true,
+	},
 }
 
 // DefaultLevel is used for a seat with no level or an unknown one.
@@ -65,9 +80,16 @@ func Decide(view View, fallback bool, level string, rng *rand.Rand) *Action {
 	p := player{view, look, rng}
 
 	if legal.MustDiscard > 0 {
+		if p.planner {
+			return p.hardDiscard()
+		}
 		return discard(view)
 	}
-	if answer := answerOffer(view); answer != nil {
+	answer := answerOffer(view)
+	if p.offers {
+		answer = p.hardAnswer()
+	}
+	if answer != nil {
 		return answer
 	}
 	if game.CurrentSeat != view.Private.Seat {
@@ -76,6 +98,9 @@ func Decide(view View, fallback bool, level string, rng *rand.Rand) *Action {
 
 	switch game.TurnPhase {
 	case "setup":
+		if p.spots {
+			return p.hardSetup()
+		}
 		if len(legal.Settlements) > 0 {
 			return &Action{"build_settlement", position(p.vertex(legal.Settlements))}
 		}
@@ -86,14 +111,30 @@ func Decide(view View, fallback bool, level string, rng *rand.Rand) *Action {
 		}
 		return &Action{"roll_dice", nil}
 	case "move_robber":
+		if p.leader {
+			return &Action{"move_robber", map[string]any{"hex": p.hardRobber()}}
+		}
 		return &Action{"move_robber", map[string]any{"hex": p.robberHex()}}
 	case "steal":
+		if p.leader {
+			return &Action{"steal", map[string]any{"victim_seat": p.hardVictim()}}
+		}
 		return &Action{"steal", map[string]any{"victim_seat": p.victim()}}
 	case "road_building":
+		if p.spots {
+			return p.hardRoad()
+		}
 		return &Action{"build_road", position(p.road(legal.Roads))}
 	case "main_phase":
 		if fallback {
+			// An open offer of its own is withdrawn first: it may be what failed
+			if offer := game.TradeOffer; offer != nil && offer.ProposerSeat == view.Private.Seat {
+				return &Action{"cancel_trade", nil}
+			}
 			return &Action{"end_turn", nil}
+		}
+		if p.planner {
+			return p.hardMain()
 		}
 		return p.mainPhase()
 	}

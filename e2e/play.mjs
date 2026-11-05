@@ -2,6 +2,8 @@
 //
 //   BASE_URL=http://localhost:5173 PLAYERS=2 BOTS=0 node play.mjs
 //
+// BOT_LEVEL (easy, medium or hard) sets the level of every bot; without it they stay medium.
+//
 // Fails on any console error, or if a part of the game was never reached.
 import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
@@ -10,6 +12,7 @@ import { chromium } from 'playwright';
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5173';
 const PLAYERS = Number(process.env.PLAYERS ?? 2);
 const BOTS = Number(process.env.BOTS ?? 0);
+const BOT_LEVEL = process.env.BOT_LEVEL;
 const SHOTS = process.env.SCREENSHOTS ?? 'screenshots';
 const MAX_STEPS = 60_000;
 const NAMES = ['Alice', 'Bob', 'Charlie', 'Dana'];
@@ -244,7 +247,15 @@ const checkLobby = async (context) => {
 
     for (let bot = 0; bot < BOTS; bot += 1) {
         await host.getByRole('button', { name: 'Add a bot' }).click();
-        await host.locator('.lobby-players li').nth(bot + 1).waitFor();
+        const seat = host.locator('.lobby-players li').nth(bot + 1);
+        await seat.waitFor();
+        if (BOT_LEVEL) {
+            await seat.locator('select.bot-level').selectOption(BOT_LEVEL);
+            await host.waitForFunction(
+                ([index, level]) => document.querySelectorAll('.lobby-players select.bot-level')[index]?.value === level,
+                [bot, BOT_LEVEL],
+            );
+        }
     }
 
     const tabs = [host];

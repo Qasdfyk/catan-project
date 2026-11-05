@@ -16,7 +16,16 @@ const (
 	reconnectDelay = 2 * time.Second
 	retryDelay     = time.Second
 	maxReadBytes   = 1 << 20
+	// offerPatience is how long a bot waits for answers to its trade offer
+	offerPatience = 5 * time.Second
 )
+
+// waitingForAnswers is a bot on its turn with an offer of its own open.
+func waitingForAnswers(view View) bool {
+	game := view.Public.Game
+	seat := view.Private.Seat
+	return game != nil && game.CurrentSeat == seat && game.TradeOffer != nil && game.TradeOffer.ProposerSeat == seat
+}
 
 // Seat identifies the place a bot plays in and how well it plays.
 type Seat struct {
@@ -98,6 +107,8 @@ func playConnection(ctx context.Context, url string, seat Seat, options Options)
 	sentVersion := -1
 	var retry <-chan time.Time
 	retrying := false
+	// Runs while the bot waits for answers to its own offer
+	var patience <-chan time.Time
 
 	for {
 		select {
@@ -113,6 +124,9 @@ func playConnection(ctx context.Context, url string, seat Seat, options Options)
 			fallback = true
 		case <-retry:
 			retry, retrying = nil, true
+		case <-patience:
+			// Nobody answered in time: fallback withdraws the offer
+			patience, fallback = nil, true
 		}
 		if !haveView {
 			continue
@@ -123,8 +137,14 @@ func playConnection(ctx context.Context, url string, seat Seat, options Options)
 
 		action := Decide(view, fallback, seat.Level, options.Rand)
 		if action == nil {
+			if !waitingForAnswers(view) {
+				patience = nil
+			} else if patience == nil {
+				patience = time.After(offerPatience)
+			}
 			continue
 		}
+		patience = nil
 
 		// Thinking time, so people can follow; a newer view replaces this one
 		select {
@@ -134,6 +154,10 @@ func playConnection(ctx context.Context, url string, seat Seat, options Options)
 		}
 		select {
 		case view = <-latest:
+			// No state may follow the last one, so it is checked here too
+			if view.Public.Status == "finished" {
+				return errSeatGone
+			}
 			if action = Decide(view, fallback, seat.Level, options.Rand); action == nil {
 				continue
 			}

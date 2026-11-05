@@ -2,7 +2,7 @@
 # Runs every check before a merge. GitHub Actions is off for this repository, so this is the CI.
 #
 #   scripts/check.sh          lint and tests of the backend, gateway and frontend
-#   scripts/check.sh --e2e    also plays a game in a browser against 3 bots
+#   scripts/check.sh --e2e    also plays a game in a browser against 3 hard bots
 #
 # Needs what scripts/dev.sh needs. Backend tests use Redis on localhost:6379, started here if absent.
 set -euo pipefail
@@ -47,7 +47,7 @@ if [ "${1:-}" = "--e2e" ]; then
         kill -0 $stack 2>/dev/null || { echo "the stack did not start, see .logs/check" >&2; exit 1; }
         sleep 1
     done
-    (cd "$root/e2e" && BASE_URL="http://localhost:$FRONTEND_PORT" PLAYERS=1 BOTS=3 npm test)
+    (cd "$root/e2e" && BASE_URL="http://localhost:$FRONTEND_PORT" PLAYERS=1 BOTS=3 BOT_LEVEL=hard npm test)
 fi
 
 printf '\nAll checks passed.\n'

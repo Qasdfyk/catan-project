@@ -29,9 +29,22 @@ type Building struct {
 
 type Player struct {
 	Seat          int    `json:"seat"`
+	Name          string `json:"name"`
 	Color         string `json:"color"`
 	VictoryPoints int    `json:"victory_points"`
 	CardCount     int    `json:"card_count"`
+	RoadLength    int    `json:"road_length"`
+	KnightsPlayed int    `json:"knights_played"`
+}
+
+type Road struct {
+	Position
+	Color string `json:"color"`
+}
+
+type Port struct {
+	Type     string     `json:"type"`
+	Vertices []Position `json:"vertices"`
 }
 
 type Offer struct {
@@ -50,15 +63,27 @@ type Game struct {
 	RobberHex   *Hex           `json:"robber_hex"`
 	BoardTiles  []Tile         `json:"board_tiles"`
 	Settlements []Building     `json:"settlements"`
+	Roads       []Road         `json:"roads"`
+	Ports       []Port         `json:"ports"`
 	Bank        map[string]int `json:"bank"`
 	TradeOffer  *Offer         `json:"trade_offer"`
+	Log         []string       `json:"log"`
+	// Colors of the players holding the bonus cards, or empty
+	LongestRoadHolder string `json:"longest_road_holder"`
+	LargestArmyHolder string `json:"largest_army_holder"`
+}
+
+type Settings struct {
+	VictoryPoints int `json:"victory_points"`
+	DiscardLimit  int `json:"discard_limit"`
 }
 
 type Public struct {
-	Version int      `json:"version"`
-	Status  string   `json:"status"`
-	Players []Player `json:"players"`
-	Game    *Game    `json:"game"`
+	Version  int      `json:"version"`
+	Status   string   `json:"status"`
+	Settings Settings `json:"settings"`
+	Players  []Player `json:"players"`
+	Game     *Game    `json:"game"`
 }
 
 type Legal struct {

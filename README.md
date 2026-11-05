@@ -16,9 +16,10 @@ new room with the same seats and rules.
 
 <img src="docs/images/lobby.png" alt="The lobby with the rules recommended for two players" width="360">
 
-Bots play at two levels, chosen by the host for each bot. In 400 games against three medium
-bots an easy bot won 10% of the time, against a fair share of 25%
-([docs/benchmarks.md](docs/benchmarks.md#bot-tournament)).
+Bots play at three levels, chosen by the host for each bot. In 400 games against three medium
+bots an easy bot won 10% of the time and a hard bot 71.5%, against a fair share of 25%
+([docs/benchmarks.md](docs/benchmarks.md#bot-tournament)). The hard bot saves for a goal,
+plans its roads toward the best free spot and offers trades to the other players.
 If a player leaves, anyone can hand their seat to a bot, and they can take it back by name.
 Shortcuts in the game: `R` rolls, `E` ends the turn, `Esc` leaves build mode.
 
@@ -112,7 +113,7 @@ cd frontend && npm test && npm run lint && npm run build
 ```
 
 `scripts/check.sh` runs all of these, and `scripts/check.sh --e2e` then also plays a game in a
-browser against bots. It replaces CI, so it runs before every merge.
+browser against 3 hard bots. It replaces CI, so it runs before every merge.
 
 Backend integration tests need Redis on `localhost:6379`. `tests/simulation` plays whole
 random games through serialization and checks the rules after every action.
@@ -128,5 +129,5 @@ cd e2e && npm ci && npx playwright install chromium
 BASE_URL=http://localhost:5173 PLAYERS=2 BOTS=0 npm test
 ```
 
-`BOTS` adds bots to the room, and `PLAYERS` sets the number of tabs. A game takes several
-minutes, because the tabs play by clicking, with a simple strategy.
+`BOTS` adds bots to the room, `BOT_LEVEL` sets their level, and `PLAYERS` sets the number of
+tabs. A game takes several minutes, because the tabs play by clicking, with a simple strategy.
