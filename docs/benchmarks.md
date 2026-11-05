@@ -98,3 +98,55 @@ Baseline from 400 games per line, measured on 2026-11-05:
 
 Games took 96–99 turns and about 41 seconds each. The full reports are in
 `benchmarks/results/tournament_medium_x4.txt` and `tournament_easy_vs_medium.txt`.
+
+### Hard level
+
+Hard plays medium's moves where it has nothing better, and adds five heuristics, each on its
+own switch in the `style` struct of `gateway/internal/bot/strategy.go`:
+
+- `planner`: picks a goal for the next turns (city, settlement with the roads to it, or a
+  development card) by its value over the turns it takes to collect, saves for it instead of
+  spending on anything affordable, trades spare cards with the bank toward it, discards what
+  the goal does not need and spends down to the discard limit before ending a turn.
+- `spots`: rates corners by pips weighted by how rare each resource is on the board, new
+  resources and usable ports, less for what the bot already collects (so the second
+  settlement complements the first), and builds roads toward the best free corner up to three
+  roads away.
+- `leader`: puts the robber on the tile that costs the leaders most, never its own, and
+  steals from the leader.
+- `offers`: proposes 1:1 trades to players for a card the goal needs (at most two offers a
+  turn), waits for every answer, confirms the first player to accept or withdraws the offer
+  (after 5 seconds without answers too). It declines offers from the leader or from someone
+  two points from winning, and accepts only those that bring its own goal closer.
+- `longestRoad`: builds roads that lengthen its longest road when two roads or fewer would
+  take the Longest Road.
+
+Knights are played to free its own tile and to take the Largest Army; Monopoly names the
+resource the others hold most of, which is what is neither in the bank nor in its hand.
+
+Measured on 2026-11-05, one hard against three medium, switching the heuristics on one after
+the other (200 games per line, the last 400):
+
+| Hard plays with | Hard wins | 95% CI |
+| --- | --- | --- |
+| nothing (a copy of medium) | ≈25% | from 4 × medium |
+| `planner` | 39.5% | 33.0–46.4% |
+| + `spots` | 50.0% | 43.1–56.9% |
+| + `leader` | 48.0% | 41.2–54.9% |
+| + `offers` | 77.0% | 70.7–82.3% |
+| + `longestRoad` (all, 400 games) | 71.5% | 66.9–75.7% |
+
+Most of the gain comes from saving for a goal, better spots and trading with players. Medium
+accepts any offer that is not worse for it in card count while it keeps one card of what it
+gives, so 1:1 offers usually go through; that part of the gain is against medium in
+particular. The robber and the Longest Road add nothing measurable at this sample size.
+
+| Table | Result |
+| --- | --- |
+| hard against 3 × medium | hard wins 71.5% (95% CI 66.9–75.7%), 0.9 refused moves per game |
+| 4 × hard | each seat wins 22.0–28.5%, no game timed out, 4.2 refused moves per game |
+
+Hard games are shorter (72 turns against 96), but with four hard bots a game takes about
+73 seconds, as offers wait for every answer. Most refused moves at a table of hard bots are
+answers or withdrawals that arrive just after the offer closed. The full reports are in
+`benchmarks/results/tournament_hard_vs_medium.txt` and `tournament_hard_x4.txt`.
