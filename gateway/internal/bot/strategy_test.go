@@ -38,7 +38,7 @@ func TestNothingToDoOnAnotherPlayersTurn(t *testing.T) {
 	view := baseView()
 	view.Public.Game.CurrentSeat = 1
 
-	if action := Decide(view, false); action != nil {
+	if action := Decide(view, false, "medium", nil); action != nil {
 		t.Fatalf("unexpected action: %v", action)
 	}
 }
@@ -50,7 +50,7 @@ func TestDiscardHappensOffTurnAndTakesLargestPiles(t *testing.T) {
 	view.Private.Resources = map[string]int{"wood": 6, "ore": 2}
 	view.Private.Legal.MustDiscard = 4
 
-	action := Decide(view, false)
+	action := Decide(view, false, "medium", nil)
 
 	cards := action.Payload["cards"].(map[string]int)
 	if action.Name != "discard" || cards["wood"] != 4 || cards["ore"] != 0 {
@@ -65,7 +65,7 @@ func TestSetupPicksTheMostProductiveCorner(t *testing.T) {
 	rich := Position{Hex{0, 0, 0}, 0} // touches ore 6, wheat 8 and wood 5
 	view.Private.Legal.Settlements = []Position{poor, rich}
 
-	action := Decide(view, false)
+	action := Decide(view, false, "medium", nil)
 
 	if action.Name != "build_settlement" || action.Payload["direction"] != 0 {
 		t.Fatalf("unexpected choice: %v", action)
@@ -77,7 +77,7 @@ func TestSetupRoadWhenNoSettlementIsLegal(t *testing.T) {
 	view.Public.Game.TurnPhase = "setup"
 	view.Private.Legal.Roads = []Position{{Hex{0, 0, 0}, 0}}
 
-	if action := Decide(view, false); action.Name != "build_road" {
+	if action := Decide(view, false, "medium", nil); action.Name != "build_road" {
 		t.Fatalf("unexpected action: %v", action)
 	}
 }
@@ -88,18 +88,18 @@ func TestBuildPriorityIsCityThenSettlement(t *testing.T) {
 	view.Private.Legal.Settlements = []Position{spot}
 	view.Private.Legal.Cities = []Position{spot}
 
-	if action := Decide(view, false); action.Name != "upgrade_city" {
+	if action := Decide(view, false, "medium", nil); action.Name != "upgrade_city" {
 		t.Fatalf("unexpected action: %v", action)
 	}
 
 	view.Private.Legal.Cities = nil
-	if action := Decide(view, false); action.Name != "build_settlement" {
+	if action := Decide(view, false, "medium", nil); action.Name != "build_settlement" {
 		t.Fatalf("unexpected action: %v", action)
 	}
 }
 
 func TestEndsTurnWithNothingToDo(t *testing.T) {
-	if action := Decide(baseView(), false); action.Name != "end_turn" {
+	if action := Decide(baseView(), false, "medium", nil); action.Name != "end_turn" {
 		t.Fatalf("unexpected action: %v", action)
 	}
 }
@@ -108,7 +108,7 @@ func TestFallbackEndsTheTurnInsteadOfRepeatingARefusedPlan(t *testing.T) {
 	view := baseView()
 	view.Private.Legal.Roads = []Position{{Hex{0, 0, 0}, 0}}
 
-	if action := Decide(view, true); action.Name != "end_turn" {
+	if action := Decide(view, true, "medium", nil); action.Name != "end_turn" {
 		t.Fatalf("unexpected action: %v", action)
 	}
 }
@@ -118,7 +118,7 @@ func TestBankTradeKeepsWhatTheNextBuildingNeeds(t *testing.T) {
 	view.Public.Game.Settlements = []Building{{Position{Hex{0, 0, 0}, 0}, "red", "settlement"}}
 	view.Private.Resources = map[string]int{"ore": 2, "wheat": 2, "wood": 4}
 
-	action := Decide(view, false)
+	action := Decide(view, false, "medium", nil)
 
 	if action.Name != "trade_with_bank" || action.Payload["give"] != "wood" {
 		t.Fatalf("unexpected trade: %v", action)
@@ -131,7 +131,7 @@ func TestBankTradeDoesNotAskForAnEmptyPile(t *testing.T) {
 	view.Public.Game.Settlements = []Building{{Position{Hex{0, 0, 0}, 0}, "red", "settlement"}}
 	view.Private.Resources = map[string]int{"wheat": 2, "wood": 4}
 
-	if action := Decide(view, false); action.Name != "end_turn" {
+	if action := Decide(view, false, "medium", nil); action.Name != "end_turn" {
 		t.Fatalf("unexpected action: %v", action)
 	}
 }
@@ -146,7 +146,7 @@ func TestRobberGoesToOpponentsAndAvoidsOwnTiles(t *testing.T) {
 		{Position{theirs, 0}, "blue", "city"},
 	}
 
-	action := Decide(view, false)
+	action := Decide(view, false, "medium", nil)
 
 	if action.Payload["hex"] != theirs {
 		t.Fatalf("unexpected robber move: %v", action)
@@ -158,7 +158,7 @@ func TestStealsFromThePlayerWithMostCards(t *testing.T) {
 	view.Public.Game.TurnPhase = "steal"
 	view.Private.Legal.StealTargets = []int{2, 1}
 
-	if action := Decide(view, false); action.Payload["victim_seat"] != 1 {
+	if action := Decide(view, false, "medium", nil); action.Payload["victim_seat"] != 1 {
 		t.Fatalf("unexpected target: %v", action)
 	}
 }
@@ -170,7 +170,7 @@ func TestPlaysKnightBeforeRollingIfRobbedOwnTile(t *testing.T) {
 	view.Public.Game.Settlements = []Building{{Position{Hex{0, 0, 0}, 0}, "red", "settlement"}}
 	view.Private.Legal.PlayableDevCards = []string{"knight"}
 
-	if action := Decide(view, false); action.Name != "play_knight" {
+	if action := Decide(view, false, "medium", nil); action.Name != "play_knight" {
 		t.Fatalf("unexpected action: %v", action)
 	}
 }
@@ -180,7 +180,7 @@ func TestRollsWithoutReasonForAKnight(t *testing.T) {
 	view.Public.Game.TurnPhase = "roll_dice"
 	view.Private.Legal.PlayableDevCards = []string{"knight"}
 
-	if action := Decide(view, false); action.Name != "roll_dice" {
+	if action := Decide(view, false, "medium", nil); action.Name != "roll_dice" {
 		t.Fatalf("unexpected action: %v", action)
 	}
 }
@@ -195,12 +195,12 @@ func TestAnswersAFairOfferOnlyWithSpareCards(t *testing.T) {
 	}
 	view.Private.Resources = map[string]int{"ore": 2}
 
-	if action := Decide(view, false); action.Payload["accept"] != true {
+	if action := Decide(view, false, "medium", nil); action.Payload["accept"] != true {
 		t.Fatalf("unexpected answer: %v", action)
 	}
 
 	view.Private.Resources = map[string]int{"ore": 1}
-	if action := Decide(view, false); action.Payload["accept"] != false {
+	if action := Decide(view, false, "medium", nil); action.Payload["accept"] != false {
 		t.Fatalf("unexpected answer: %v", action)
 	}
 }
@@ -210,7 +210,7 @@ func TestAnswersAnOfferOnlyOnce(t *testing.T) {
 	view.Public.Game.CurrentSeat = 1
 	view.Public.Game.TradeOffer = &Offer{ProposerSeat: 1, DeclinedSeats: []int{0}}
 
-	if action := Decide(view, false); action != nil {
+	if action := Decide(view, false, "medium", nil); action != nil {
 		t.Fatalf("unexpected action: %v", action)
 	}
 }
@@ -219,7 +219,7 @@ func TestDoesNothingOnceTheGameIsOver(t *testing.T) {
 	view := baseView()
 	view.Public.Game.IsGameOver = true
 
-	if action := Decide(view, false); action != nil {
+	if action := Decide(view, false, "medium", nil); action != nil {
 		t.Fatalf("unexpected action: %v", action)
 	}
 }

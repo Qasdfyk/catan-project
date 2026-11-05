@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"math/rand/v2"
 	"time"
 
 	"github.com/coder/websocket"
@@ -15,10 +16,12 @@ const (
 	maxReadBytes   = 1 << 20
 )
 
-// Seat identifies the place a bot plays in.
+// Seat identifies the place a bot plays in and how well it plays.
 type Seat struct {
 	RoomID string `json:"room_id"`
 	Token  string `json:"token"`
+	// Level is "easy", "medium" or "hard"; empty means DefaultLevel
+	Level string `json:"level"`
 }
 
 type serverMessage struct {
@@ -34,8 +37,9 @@ var errSeatGone = errors.New("seat is gone")
 
 // Play keeps one bot in its seat until the game ends, reconnecting if needed.
 func Play(ctx context.Context, url string, seat Seat, delay time.Duration) {
+	rng := rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64()))
 	for ctx.Err() == nil {
-		err := playConnection(ctx, url, seat, delay)
+		err := playConnection(ctx, url, seat, delay, rng)
 		if errors.Is(err, errSeatGone) {
 			return
 		}
@@ -46,7 +50,7 @@ func Play(ctx context.Context, url string, seat Seat, delay time.Duration) {
 	}
 }
 
-func playConnection(ctx context.Context, url string, seat Seat, delay time.Duration) error {
+func playConnection(ctx context.Context, url string, seat Seat, delay time.Duration, rng *rand.Rand) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -92,7 +96,7 @@ func playConnection(ctx context.Context, url string, seat Seat, delay time.Durat
 			return errSeatGone
 		}
 
-		action := Decide(view, fallback)
+		action := Decide(view, fallback, seat.Level, rng)
 		if action == nil {
 			continue
 		}
@@ -105,7 +109,7 @@ func playConnection(ctx context.Context, url string, seat Seat, delay time.Durat
 		}
 		select {
 		case view = <-latest:
-			if action = Decide(view, fallback); action == nil {
+			if action = Decide(view, fallback, seat.Level, rng); action == nil {
 				continue
 			}
 		default:
