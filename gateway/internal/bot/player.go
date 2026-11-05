@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"math/rand/v2"
+	"reflect"
 	"time"
 
 	"github.com/coder/websocket"
@@ -13,6 +14,7 @@ import (
 
 const (
 	reconnectDelay = 2 * time.Second
+	retryDelay     = time.Second
 	maxReadBytes   = 1 << 20
 )
 
@@ -84,13 +86,18 @@ func playConnection(ctx context.Context, url string, seat Seat, options Options)
 
 	// The reader keeps only the newest view: thinking on an old one is pointless.
 	latest := make(chan View, 1)
-	refused := make(chan struct{}, 1)
+	refused := make(chan string, 1)
 	readErr := make(chan error, 1)
 	go func() { readErr <- read(ctx, conn, latest, refused, options) }()
 
 	var view View
 	haveView, fallback := false, false
 	request := 0
+	// The last move sent and the state it was chosen on
+	var sent Action
+	sentVersion := -1
+	var retry <-chan time.Time
+	retrying := false
 
 	for {
 		select {
@@ -101,9 +108,11 @@ func playConnection(ctx context.Context, url string, seat Seat, options Options)
 		case view = <-latest:
 			haveView = true
 			fallback = false
-		case <-refused:
-			log.Printf("bot in %s: move refused", seat.RoomID)
+		case reason := <-refused:
+			log.Printf("bot in %s: move refused: %s", seat.RoomID, reason)
 			fallback = true
+		case <-retry:
+			retry, retrying = nil, true
 		}
 		if !haveView {
 			continue
@@ -131,6 +140,15 @@ func playConnection(ctx context.Context, url string, seat Seat, options Options)
 		default:
 		}
 
+		// The server refused this very move on this very state. Sending it again
+		// at once would only spin, so it waits for a new state, or retries in a
+		// while in case the refusal was the rate limit.
+		if !retrying && view.Public.Version == sentVersion && reflect.DeepEqual(*action, sent) {
+			retry = time.After(retryDelay)
+			continue
+		}
+		sent, sentVersion, retrying = *action, view.Public.Version, false
+
 		if options.OnAction != nil {
 			options.OnAction(view, *action)
 		}
@@ -148,7 +166,7 @@ func playConnection(ctx context.Context, url string, seat Seat, options Options)
 	}
 }
 
-func read(ctx context.Context, conn *websocket.Conn, latest chan View, refused chan struct{}, options Options) error {
+func read(ctx context.Context, conn *websocket.Conn, latest chan View, refused chan string, options Options) error {
 	for {
 		_, data, err := conn.Read(ctx)
 		if err != nil {
@@ -181,7 +199,7 @@ func read(ctx context.Context, conn *websocket.Conn, latest chan View, refused c
 				options.OnRefused(message.Message)
 			}
 			select {
-			case refused <- struct{}{}:
+			case refused <- message.Message:
 			default:
 			}
 		}
