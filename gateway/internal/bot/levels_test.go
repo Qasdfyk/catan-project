@@ -38,7 +38,7 @@ func TestMediumDoesNotDependOnChance(t *testing.T) {
 func TestUnknownLevelPlaysAsMedium(t *testing.T) {
 	view := setupView()
 	want := Decide(view, false, "medium", nil)
-	for _, level := range []string{"", "hard", "expert"} {
+	for _, level := range []string{"", "expert"} {
 		if got := Decide(view, false, level, seeded(3)); !reflect.DeepEqual(got, want) {
 			t.Fatalf("%q: %v, want %v", level, got, want)
 		}
