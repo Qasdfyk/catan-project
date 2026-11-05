@@ -73,3 +73,18 @@ cost of the second gateway.
 ## Measured once, not part of the script
 
 - 600 idle bots in one process took 28 MB of memory on top of 9 MB at rest.
+
+## Bot tournament
+
+`benchmarks/tournament.sh <name> [flags]` starts its own Redis, backend and gateway and runs
+`gateway/cmd/tournament`, which plays whole games between bot levels with no bots service:
+it opens each room through the REST API and runs every seat in one process. The levels move
+one seat per game, so no level always plays first. The report, with the win rate of each
+level and seat and a 95% Wilson interval, goes to `benchmarks/results/tournament_<name>.txt`.
+`-record file.jsonl` also appends every decision and result as training data.
+
+    benchmarks/tournament.sh easy_vs_medium -games 400 -parallel 64 -levels easy,medium,medium,medium
+
+Bots wait 100 ms before each move, because the gateway takes 10 messages a second per
+connection and a faster bot gets refused. A game then takes about 40 seconds, and 64 games at
+once finish about one game a second on the machine above.
