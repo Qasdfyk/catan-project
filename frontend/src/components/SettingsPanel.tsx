@@ -24,7 +24,7 @@ const PRESETS = [
     { label: 'Recommended for 2 players', settings: TWO_PLAYER_SETTINGS },
 ];
 
-const TIMER_HINT = 'not enforced yet';
+const TIMER_HINT = 'the turn ends itself at zero';
 
 export const SettingsPanel = ({ settings, editable, send }: SettingsPanelProps) => {
     const timerHintId = useId();

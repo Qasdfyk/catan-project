@@ -16,7 +16,7 @@ describe('SettingsPanel', () => {
 
         expect(markup.match(/<select/g)).toHaveLength(4);
         expect(markup).toContain('type="checkbox"');
-        expect(markup).toContain('not enforced yet');
+        expect(markup).toContain('the turn ends itself at zero');
         expect(chip(markup, 'Recommended for 2 players')).not.toContain('disabled');
     });
 
