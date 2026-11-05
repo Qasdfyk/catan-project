@@ -154,6 +154,10 @@ func playConnection(ctx context.Context, url string, seat Seat, options Options)
 		}
 		select {
 		case view = <-latest:
+			// No state may follow the last one, so it is checked here too
+			if view.Public.Status == "finished" {
+				return errSeatGone
+			}
 			if action = Decide(view, fallback, seat.Level, options.Rand); action == nil {
 				continue
 			}
