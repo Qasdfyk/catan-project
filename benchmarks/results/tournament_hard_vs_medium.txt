@@ -1,0 +1,15 @@
+levels hard,medium,medium,medium, rotating one seat per game
+games 400: finished 400, timed out 0, failed 0
+
+level    seats  wins     win  95% CI          fair share
+hard         1   286   71.5%  66.9%–75.7%     25.0%
+medium       3   114   28.5%  24.3%–33.1%     75.0%
+
+seat      wins     win  95% CI
+0          117   29.2%  25.0%–33.9%
+1           95   23.8%  19.8%–28.2%
+2           95   23.8%  19.8%–28.2%
+3           93   23.2%  19.4%–27.6%
+
+per finished game: 72.0 turns, 39.236s on average, 1m8.884s at most, 0.9 refused moves
+wall time 4m39.597s, 699ms per game with games in parallel
