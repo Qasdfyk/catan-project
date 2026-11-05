@@ -88,3 +88,13 @@ level and seat and a 95% Wilson interval, goes to `benchmarks/results/tournament
 Bots wait 100 ms before each move, because the gateway takes 10 messages a second per
 connection and a faster bot gets refused. A game then takes about 40 seconds, and 64 games at
 once finish about one game a second on the machine above.
+
+Baseline from 400 games per line, measured on 2026-11-05:
+
+| Table | Result |
+| --- | --- |
+| 4 × medium | each seat wins 23.5–26.5%, so the seat order gives no edge |
+| easy against 3 × medium | easy wins 10.2% (95% CI 7.6–13.6%), against a fair share of 25% |
+
+Games took 96–99 turns and about 41 seconds each. The full reports are in
+`benchmarks/results/tournament_medium_x4.txt` and `tournament_easy_vs_medium.txt`.
