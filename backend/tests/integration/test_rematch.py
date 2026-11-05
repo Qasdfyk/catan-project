@@ -252,3 +252,38 @@ async def test_rematch_tokens_stay_secret(client):
     for text in texts:
         assert not any(token in text for token in hidden)
     await clear_bots()
+
+
+@pytest.mark.asyncio
+async def test_bots_keep_their_level_in_the_rematch(client):
+    host = await create_room(client)
+    await act(client, host["room_id"], host["token"], "add_bot", {"level": "easy"})
+    await act(client, host["room_id"], host["token"], "add_bot", {"level": "hard"})
+    bob = (await join(client, host["room_id"], "Bob")).json()
+    await act(client, host["room_id"], host["token"], "start_game")
+    await finish(client, host)
+    room = await app.state.redis.get_room(host["room_id"])
+    # Bob left and a bot took over his seat
+    room["seats"][bob["seat"]].update(bot=True, replaced=True, level="medium", token="bot-token")
+    await app.state.redis.save_room(host["room_id"], room)
+
+    await act(client, host["room_id"], host["token"], "rematch")
+
+    new = (await rematch(client, host["room_id"], host["token"])).json()
+    players = (await session(client, new["room_id"], new["token"]))["public"]["players"]
+    assert [p["bot_level"] for p in players] == [None, "easy", "hard", "medium"]
+    await clear_bots()
+
+
+@pytest.mark.asyncio
+async def test_bots_of_older_rooms_play_the_rematch_at_medium(client):
+    host, _ = await finished_room(client, guests=(), bots=1)
+    room = await app.state.redis.get_room(host["room_id"])
+    del room["seats"][1]["level"]
+    await app.state.redis.save_room(host["room_id"], room)
+
+    await act(client, host["room_id"], host["token"], "rematch")
+
+    new_id = (await app.state.redis.get_room(host["room_id"]))["rematch_room_id"]
+    assert (await app.state.redis.get_room(new_id))["seats"][1]["level"] == "medium"
+    await clear_bots()

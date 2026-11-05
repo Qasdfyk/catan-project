@@ -283,9 +283,9 @@ class RoomService:
             new_entry = {"name": entry["name"], "token": secrets.token_urlsafe(24)}
             if entry.get("replaced"):
                 # A bot keeps the seat until the player who left returns by name
-                new_entry.update(bot=True, replaced=True)
+                new_entry.update(bot=True, replaced=True, level=DEFAULT_BOT_LEVEL)
             elif entry.get("bot"):
-                new_entry["bot"] = True
+                new_entry.update(bot=True, level=entry.get("level", DEFAULT_BOT_LEVEL))
             seats.append(new_entry)
 
         rematch = {
