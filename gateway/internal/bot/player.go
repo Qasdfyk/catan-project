@@ -35,11 +35,27 @@ type serverMessage struct {
 // errSeatGone ends a bot whose room finished or no longer accepts it.
 var errSeatGone = errors.New("seat is gone")
 
+// Options tune how a bot plays and let a caller watch it.
+type Options struct {
+	// Delay is the thinking time before each move
+	Delay time.Duration
+	// Rand is for the levels that leave things to chance; nil seeds one at random
+	Rand *rand.Rand
+	// OnState sees every state the seat receives, on the reading goroutine
+	OnState func(View)
+	// OnAction sees every move just before it is sent
+	OnAction func(View, Action)
+	// OnRefused is told when the server refuses a move
+	OnRefused func(message string)
+}
+
 // Play keeps one bot in its seat until the game ends, reconnecting if needed.
-func Play(ctx context.Context, url string, seat Seat, delay time.Duration) {
-	rng := rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64()))
+func Play(ctx context.Context, url string, seat Seat, options Options) {
+	if options.Rand == nil {
+		options.Rand = rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64()))
+	}
 	for ctx.Err() == nil {
-		err := playConnection(ctx, url, seat, delay, rng)
+		err := playConnection(ctx, url, seat, options)
 		if errors.Is(err, errSeatGone) {
 			return
 		}
@@ -50,7 +66,7 @@ func Play(ctx context.Context, url string, seat Seat, delay time.Duration) {
 	}
 }
 
-func playConnection(ctx context.Context, url string, seat Seat, delay time.Duration, rng *rand.Rand) error {
+func playConnection(ctx context.Context, url string, seat Seat, options Options) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -70,7 +86,7 @@ func playConnection(ctx context.Context, url string, seat Seat, delay time.Durat
 	latest := make(chan View, 1)
 	refused := make(chan struct{}, 1)
 	readErr := make(chan error, 1)
-	go func() { readErr <- read(ctx, conn, latest, refused) }()
+	go func() { readErr <- read(ctx, conn, latest, refused, options) }()
 
 	var view View
 	haveView, fallback := false, false
@@ -96,25 +112,28 @@ func playConnection(ctx context.Context, url string, seat Seat, delay time.Durat
 			return errSeatGone
 		}
 
-		action := Decide(view, fallback, seat.Level, rng)
+		action := Decide(view, fallback, seat.Level, options.Rand)
 		if action == nil {
 			continue
 		}
 
 		// Thinking time, so people can follow; a newer view replaces this one
 		select {
-		case <-time.After(delay):
+		case <-time.After(options.Delay):
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 		select {
 		case view = <-latest:
-			if action = Decide(view, fallback, seat.Level, rng); action == nil {
+			if action = Decide(view, fallback, seat.Level, options.Rand); action == nil {
 				continue
 			}
 		default:
 		}
 
+		if options.OnAction != nil {
+			options.OnAction(view, *action)
+		}
 		request++
 		payload := action.Payload
 		if payload == nil {
@@ -129,7 +148,7 @@ func playConnection(ctx context.Context, url string, seat Seat, delay time.Durat
 	}
 }
 
-func read(ctx context.Context, conn *websocket.Conn, latest chan View, refused chan struct{}) error {
+func read(ctx context.Context, conn *websocket.Conn, latest chan View, refused chan struct{}, options Options) error {
 	for {
 		_, data, err := conn.Read(ctx)
 		if err != nil {
@@ -146,6 +165,9 @@ func read(ctx context.Context, conn *websocket.Conn, latest chan View, refused c
 			if json.Unmarshal(message.Public, &view.Public) != nil || json.Unmarshal(message.Private, &view.Private) != nil {
 				continue
 			}
+			if options.OnState != nil {
+				options.OnState(view)
+			}
 			select {
 			case <-latest:
 			default:
@@ -154,6 +176,9 @@ func read(ctx context.Context, conn *websocket.Conn, latest chan View, refused c
 		case "error":
 			if message.Fatal {
 				return errSeatGone
+			}
+			if options.OnRefused != nil {
+				options.OnRefused(message.Message)
 			}
 			select {
 			case refused <- struct{}{}:
