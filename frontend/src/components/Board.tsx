@@ -1,4 +1,5 @@
 import type { BoardTile, GameView, HexCoords, Player, PlayerColor, Port, Position, TileResource } from '../types/game';
+import { hexKey, type BuiltChanges } from '../utils/changes';
 import {
     getEdgeEndpoints,
     getVertexCoords,
@@ -29,6 +30,10 @@ interface BoardProps {
     onRoad: (position: Position) => void;
     onCity: (position: Position) => void;
     onRobber: (hex: HexCoords) => void;
+    /** Tiles that just produced; without it every tile with the rolled number is marked. */
+    producing?: HexCoords[];
+    /** The pieces built last and the robber's new tile, marked with a ring. */
+    recent?: BuiltChanges;
 }
 
 const points = (corners: Point[]) => corners.map(({ x, y }) => `${x},${y}`).join(' ');
@@ -68,7 +73,7 @@ const Tile = ({ tile, rolled }: { tile: BoardTile; rolled: boolean }) => {
     const center = hexToPixel(tile.hex);
     const hot = tile.number === 6 || tile.number === 8;
     return (
-        <g>
+        <g data-tile={hexKey(tile.hex)}>
             <polygon
                 className={rolled ? 'tile rolled' : 'tile'}
                 points={points(hexCorners(tile.hex))}
@@ -156,8 +161,64 @@ const Robber = ({ hex }: { hex: HexCoords }) => {
     );
 };
 
-export const Board = ({ game, players, targets, onSettlement, onRoad, onCity, onRobber }: BoardProps) => {
+// Marks of what changed last; they never catch a click meant for a target.
+// The glow of a road lies under the roads, so the road keeps its color.
+const RecentRoads = ({ recent }: { recent: BuiltChanges }) => (
+    <g className="recent" aria-hidden="true">
+        {recent.roads.map((road) => {
+            const [from, to] = getEdgeEndpoints(road);
+            return (
+                <line
+                    key={positionKey('recent-road', road)}
+                    className="recent-road"
+                    data-recent="road"
+                    x1={from.x}
+                    y1={from.y}
+                    x2={to.x}
+                    y2={to.y}
+                />
+            );
+        })}
+    </g>
+);
+
+const RecentMarks = ({ recent }: { recent: BuiltChanges }) => (
+    <g className="recent" aria-hidden="true">
+        {recent.robber && (
+            <polygon className="recent-hex" data-recent="robber" points={points(hexCorners(recent.robber))} />
+        )}
+        {[...recent.settlements, ...recent.cities].map((building) => {
+            const at = getVertexCoords(building);
+            return (
+                <circle
+                    key={positionKey('recent-building', building)}
+                    className="recent-ring"
+                    data-recent={building.type}
+                    cx={at.x}
+                    cy={at.y}
+                    r={building.type === 'city' ? 24 : 19}
+                />
+            );
+        })}
+    </g>
+);
+
+export const Board = ({
+    game,
+    players,
+    targets,
+    onSettlement,
+    onRoad,
+    onCity,
+    onRobber,
+    producing,
+    recent,
+}: BoardProps) => {
     const nameOf = (color: PlayerColor) => players.find((p) => p.color === color)?.name ?? color;
+    const producingKeys = producing && new Set(producing.map(hexKey));
+    const isRolled = (tile: BoardTile) => (producingKeys
+        ? producingKeys.has(hexKey(tile.hex))
+        : game.dice_roll !== null && tile.number === game.dice_roll);
 
     return (
         <svg className="board" viewBox={VIEW_BOX} role="img" aria-label="Game board">
@@ -165,7 +226,16 @@ export const Board = ({ game, players, targets, onSettlement, onRoad, onCity, on
                 <Tile
                     key={`${tile.hex.q}-${tile.hex.r}`}
                     tile={tile}
-                    rolled={game.dice_roll !== null && tile.number === game.dice_roll}
+                    rolled={isRolled(tile)}
+                />
+            ))}
+
+            {/* Above all tiles, so a neighbour never covers the outline */}
+            {game.board_tiles.filter(isRolled).map((tile) => (
+                <polygon
+                    key={`rolled-${hexKey(tile.hex)}`}
+                    className="rolled-outline"
+                    points={points(hexCorners(tile.hex))}
                 />
             ))}
 
@@ -184,6 +254,8 @@ export const Board = ({ game, players, targets, onSettlement, onRoad, onCity, on
                     onClick={() => onRobber(hex)}
                 />
             ))}
+
+            {recent && <RecentRoads recent={recent} />}
 
             {game.roads.map((road) => {
                 const [from, to] = getEdgeEndpoints(road);
@@ -228,6 +300,8 @@ export const Board = ({ game, players, targets, onSettlement, onRoad, onCity, on
                     </g>
                 );
             })}
+
+            {recent && <RecentMarks recent={recent} />}
 
             {targets.settlements.map((position) => {
                 const at = getVertexCoords(position);
