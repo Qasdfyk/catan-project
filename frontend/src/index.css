@@ -198,6 +198,13 @@ label.check input { width: auto; margin: 0; flex: none; }
 
 .log { flex: 1; min-height: 120px; overflow-y: auto; }
 .log ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-size: 13px; }
+.log li { display: flex; align-items: baseline; gap: 6px; }
+.log-icon { flex: none; width: 16px; text-align: center; color: var(--muted); }
+.log-player { font-weight: 600; }
+.log-roll .log-icon, .log-win .log-icon { color: var(--text); }
+.log-turn { margin-top: 2px; padding-top: 3px; border-top: 1px solid var(--line); }
+.log-timeout .log-icon, .log-bank .log-icon, .log-robber .log-icon { color: var(--danger); }
+.log-longest_road .log-icon, .log-largest_army .log-icon, .log-win .log-icon { color: var(--highlight); }
 
 .handbar { grid-area: hand; padding: 8px 12px; background: var(--surface); border-top: 1px solid var(--line); }
 .hand { display: flex; justify-content: center; gap: 8px; }

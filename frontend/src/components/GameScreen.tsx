@@ -7,6 +7,7 @@ import { CostDots } from './CostDots';
 import { Dice } from './Dice';
 import { DevCardsPanel } from './DevCardsPanel';
 import { DiscardDialog } from './DiscardDialog';
+import { GameLog } from './GameLog';
 import { PlayerTradePanel, TradeOfferPanel } from './PlayerTrade';
 import { ResourceCards } from './ResourceCards';
 import { RollStats } from './RollStats';
@@ -280,14 +281,7 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
 
                 <RollStats counts={game.roll_counts} last={game.dice_roll} />
 
-                <section className="panel log" aria-label="Game log">
-                    <h2>Log</h2>
-                    <ol>
-                        {[...game.log].reverse().map((entry, index) => (
-                            <li key={game.log.length - index}>{entry}</li>
-                        ))}
-                    </ol>
-                </section>
+                <GameLog log={game.log} players={players} />
             </aside>
 
             <footer className="handbar">
