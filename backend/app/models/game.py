@@ -46,6 +46,8 @@ LARGEST_ARMY_POINTS = 2
 ROAD_BUILDING_ROADS = 2
 BANK_SIZE = 19
 LOG_SIZE = 40
+# Two dice give totals from 2 to 12
+DICE_TOTALS = range(2, 13)
 FRIENDLY_ROBBER_ERROR = (
     f"The friendly robber leaves players with {FRIENDLY_ROBBER_MAX_POINTS} points or fewer alone."
 )
@@ -89,6 +91,8 @@ class GameState:
     turn_number: int = 0
     dice_roll: Optional[int] = None
     dice: List[int] = field(default_factory=list)
+    # How often each total was rolled this game: index 0 counts the 2s, index 10 the 12s
+    roll_counts: List[int] = field(default_factory=lambda: [0] * len(DICE_TOTALS))
     turn_phase: TurnPhase = TurnPhase.SETUP
 
     # --- SETUP PHASE STATE ---
@@ -283,6 +287,7 @@ class GameState:
         d2 = random.randint(1, 6)
         self.dice_roll = d1 + d2
         self.dice = [d1, d2]
+        self.roll_counts[self.dice_roll - DICE_TOTALS.start] += 1
         self._log(f"{player.name} rolled {self.dice_roll}.")
 
         if self.dice_roll == 7:

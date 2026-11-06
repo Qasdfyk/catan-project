@@ -1,5 +1,5 @@
 from typing import Dict, Any, List
-from app.models.game import GameState, Building, TradeOffer, TurnPhase, BuildingType
+from app.models.game import DICE_TOTALS, GameState, Building, TradeOffer, TurnPhase, BuildingType
 from app.models.board import Board, Tile, ResourceType, Port, PortType
 from app.models.player import DevCard, Player, PlayerColor
 from app.models.hex_lib import Hex, Vertex, Edge
@@ -17,6 +17,7 @@ class GameSerializer:
             "turn_phase": game.turn_phase.value,
             "dice_roll": game.dice_roll,
             "dice": game.dice,
+            "roll_counts": game.roll_counts,
 
             "setup_queue": game.setup_queue,
             "setup_waiting_for_road": game.setup_waiting_for_road,
@@ -61,6 +62,8 @@ class GameSerializer:
             turn_number=data.get("turn_number", 0),
             dice_roll=data["dice_roll"],
             dice=data.get("dice", []),
+            # Games saved before the counts existed start them from nothing
+            roll_counts=data.get("roll_counts") or [0] * len(DICE_TOTALS),
             turn_phase=TurnPhase(data["turn_phase"]),
             robber_hex=GameSerializer._dict_to_hex(data["robber_hex"]) if data["robber_hex"] else None,
             is_game_over=data["is_game_over"],

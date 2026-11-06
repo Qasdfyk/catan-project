@@ -7,14 +7,19 @@ import { CostDots } from './CostDots';
 import { Dice } from './Dice';
 import { DevCardsPanel } from './DevCardsPanel';
 import { DiscardDialog } from './DiscardDialog';
+import { GameLog } from './GameLog';
 import { PlayerTradePanel, TradeOfferPanel } from './PlayerTrade';
 import { ResourceCards } from './ResourceCards';
+import { CardGainBadge, RollGains } from './RollGains';
+import { RollStats } from './RollStats';
 import { TradePanel } from './TradePanel';
 import { TurnTimer } from './TurnTimer';
 import { WinnerDialog } from './WinnerDialog';
 import { botLabel } from '../utils/bots';
-import { PLAYER_COLORS } from '../utils/labels';
+import { PLAYER_COLORS, PLAYER_TEXT_COLORS } from '../utils/labels';
 import { settingsSummary } from '../utils/settings';
+import { turnPrompt } from '../utils/turnPrompt';
+import { useChanges } from '../utils/useChanges';
 
 type BuildMode = 'settlement' | 'road' | 'city' | null;
 
@@ -43,33 +48,6 @@ interface GameScreenProps {
     rematchError: string;
 }
 
-const instruction = (game: GameView, current: Player, isMyTurn: boolean, mustDiscard: number): string => {
-    if (mustDiscard > 0) return `Discard ${mustDiscard} cards.`;
-    if (game.turn_phase === 'discard') return 'Waiting for players to discard…';
-
-    if (!isMyTurn) {
-        const doing = game.turn_phase === 'setup' ? 'is placing pieces' : 'is playing';
-        return `${current.name} ${doing}…`;
-    }
-
-    switch (game.turn_phase) {
-        case 'setup':
-            return game.setup_waiting_for_road
-                ? 'Place a road next to your new settlement.'
-                : 'Place a settlement.';
-        case 'roll_dice':
-            return 'Roll the dice.';
-        case 'move_robber':
-            return 'Move the robber to another tile.';
-        case 'steal':
-            return 'Choose a player to steal from.';
-        case 'road_building':
-            return `Place a free road (${game.free_roads_left} left).`;
-        default:
-            return 'Build, trade or end your turn.';
-    }
-};
-
 export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps) => {
     const game = state.game as GameView;
     const players = state.players as Player[];
@@ -77,12 +55,13 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
 
     const [buildMode, setBuildMode] = useState<BuildMode>(null);
     const [winnerClosed, setWinnerClosed] = useState(false);
+    const changes = useChanges(state, mine.resources);
 
     const legal = mine.legal ?? EMPTY_LEGAL;
-    const current = players[game.current_seat];
     const isMyTurn = game.current_seat === mine.seat && !game.is_game_over;
     const inMain = game.turn_phase === 'main_phase';
     const winner = game.winner_seat === null ? null : players[game.winner_seat];
+    const prompt = turnPrompt(game, players, mine.seat, legal.must_discard);
 
     const targets = useMemo<BoardTargets>(() => {
         if (!isMyTurn) return NO_TARGETS;
@@ -145,6 +124,7 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
                     isHost={state.host_seat === mine.seat}
                     rematchStarted={state.rematch_room_id !== null}
                     rematchError={rematchError}
+                    actionError={room.error}
                     onRematch={() => send('rematch')}
                     onClose={() => setWinnerClosed(true)}
                 />
@@ -152,25 +132,29 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
 
             <header className="topbar">
                 <strong>Catan</strong>
-                <span className="status-text" data-testid="instruction">
-                    {winner
-                        ? `${winner.name} won the game!`
-                        : instruction(game, current, isMyTurn, legal.must_discard)}
-                </span>
-                {state.turn_deadline !== null && (
-                    <TurnTimer
-                        key={`${state.turn_deadline}:${state.server_time}`}
-                        deadline={state.turn_deadline}
-                        serverTime={state.server_time}
-                    />
-                )}
+                <div className={prompt.act ? 'turn-status act' : 'turn-status'}>
+                    {prompt.player && (
+                        <span className="turn-player" style={{ color: PLAYER_TEXT_COLORS[prompt.player.color] }}>
+                            <span className="swatch" style={{ background: PLAYER_COLORS[prompt.player.color] }} />
+                            {prompt.label}
+                        </span>
+                    )}
+                    <span className="status-text" data-testid="instruction">{prompt.text}</span>
+                    {state.turn_deadline !== null && (
+                        <TurnTimer
+                            key={`${state.turn_deadline}:${state.server_time}`}
+                            deadline={state.turn_deadline}
+                            serverTime={state.server_time}
+                        />
+                    )}
+                </div>
                 {(mine.hidden_points ?? 0) > 0 && (
                     <span className="muted" title="Your hidden Victory Point cards">
                         +{mine.hidden_points} hidden VP
                     </span>
                 )}
                 {game.dice_roll !== null && game.dice.length === 2 && (
-                    <Dice values={game.dice} total={game.dice_roll} />
+                    <Dice key={changes.rollCount} values={game.dice} total={game.dice_roll} rolling={changes.roll !== null} />
                 )}
                 {!room.connected && <span className="offline">Reconnecting…</span>}
             </header>
@@ -186,6 +170,8 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
                     onRoad={(position) => build('build_road', position)}
                     onCity={(position) => build('upgrade_city', position)}
                     onRobber={(hex) => send('move_robber', { hex })}
+                    producing={changes.roll?.producing ?? []}
+                    recent={changes.built}
                 />
             </div>
 
@@ -205,6 +191,7 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
                                     {player.name}
                                     {player.seat === mine.seat && <span className="muted"> (you)</span>}
                                     {player.is_bot && <span className="muted"> ({botLabel(player.bot_level)})</span>}
+                                    <CardGainBadge key={changes.rollCount} gain={changes.roll?.cardGains[player.seat]} />
                                     {!player.is_bot && !room.online.includes(player.seat) && !game.is_game_over && (
                                         <button
                                             className="link"
@@ -299,18 +286,14 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
 
                 <ChatPanel messages={room.chat} players={players} onSend={room.sendChat} />
 
-                <section className="panel log" aria-label="Game log">
-                    <h2>Log</h2>
-                    <ol>
-                        {[...game.log].reverse().map((entry, index) => (
-                            <li key={game.log.length - index}>{entry}</li>
-                        ))}
-                    </ol>
-                </section>
+                <RollStats counts={game.roll_counts} last={game.dice_roll} />
+
+                <GameLog log={game.log} players={players} />
             </aside>
 
             <footer className="handbar">
                 <ResourceCards resources={mine.resources} />
+                {changes.roll && <RollGains key={changes.rollCount} gains={changes.roll.ownGains} />}
                 {canRoll && (
                     <button className="primary big" title="Shortcut: R" onClick={() => send('roll_dice')}>
                         Roll dice

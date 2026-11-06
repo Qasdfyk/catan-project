@@ -60,4 +60,12 @@ describe('LobbyScreen', () => {
         expect(markup).toContain(' · bot, easy');
         expect(markup).toContain(' · bot, hard');
     });
+
+    it('shows bots as ready rather than offline', () => {
+        const markup = render(1);
+
+        expect(markup.match(/class="dot bot"/g)).toHaveLength(2);
+        // Ann and Bob are people who have not connected in this test
+        expect(markup.match(/class="dot"/g)).toHaveLength(2);
+    });
 });

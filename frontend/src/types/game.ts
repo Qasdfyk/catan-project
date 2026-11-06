@@ -88,6 +88,8 @@ export interface GameView {
   turn_phase: TurnPhase;
   dice_roll: number | null;
   dice: number[];
+  /** How often each total was rolled this game: index 0 counts the 2s, index 10 the 12s. */
+  roll_counts: number[];
   setup_waiting_for_road: boolean;
   robber_hex: HexCoords | null;
   is_game_over: boolean;

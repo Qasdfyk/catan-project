@@ -21,6 +21,8 @@ bots an easy bot won 10% of the time and a hard bot 71.5%, against a fair share 
 ([docs/benchmarks.md](docs/benchmarks.md#bot-tournament)). The hard bot saves for a goal,
 plans its roads toward the best free spot and offers trades to the other players.
 If a player leaves, anyone can hand their seat to a bot, and they can take it back by name.
+After each roll the board lights up the tiles that produced and shows who got how many cards.
+The side panel keeps a histogram of the dice totals and a log in the players' colours.
 Shortcuts in the game: `R` rolls, `E` ends the turn, `Esc` leaves build mode.
 
 ![A game in progress](docs/images/game.png)

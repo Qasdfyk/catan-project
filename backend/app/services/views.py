@@ -14,7 +14,7 @@ from app.services.serializer import GameSerializer
 PUBLIC_GAME_FIELDS = (
     "turn_phase", "dice_roll", "dice", "setup_waiting_for_road", "robber_hex", "is_game_over",
     "board_tiles", "ports", "roads", "settlements", "longest_road_holder", "largest_army_holder",
-    "free_roads_left", "log",
+    "free_roads_left", "log", "roll_counts",
 )
 
 

@@ -17,11 +17,12 @@ const Die = ({ value }: { value: number }) => (
 interface DiceProps {
     values: number[];
     total: number;
+    /** Right after a roll: the dice tumble once. */
+    rolling?: boolean;
 }
 
-// The dice disappear between turns, so every roll mounts them anew and animates.
-export const Dice = ({ values, total }: DiceProps) => (
-    <span className="dice">
+export const Dice = ({ values, total, rolling = false }: DiceProps) => (
+    <span className={rolling ? 'dice rolling' : 'dice'}>
         {values.map((value, index) => <Die key={index} value={value} />)}
         <span data-testid="dice">Rolled {total}</span>
     </span>
