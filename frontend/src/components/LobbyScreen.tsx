@@ -38,7 +38,10 @@ export const LobbyScreen = ({ state, seat, room }: LobbyScreenProps) => {
                 <ul className="lobby-players">
                     {state.players.map((player) => (
                         <li key={player.seat}>
-                            <span className={room.online.includes(player.seat) ? 'dot online' : 'dot'} />
+                            {/* Bots only connect once the game starts, but they are always ready */}
+                            {player.is_bot
+                                ? <span className="dot bot" title="Bot, always ready" />
+                                : <span className={room.online.includes(player.seat) ? 'dot online' : 'dot'} />}
                             {player.name}
                             {player.seat === state.host_seat && <span className="muted"> · host</span>}
                             {player.seat === seat && <span className="muted"> · you</span>}

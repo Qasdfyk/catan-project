@@ -91,6 +91,7 @@ label.check input { width: auto; margin: 0; flex: none; }
 
 .dot { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; background: #b4b4b4; flex: none; }
 .dot.online { background: #2ea043; }
+.dot.bot { border-radius: 2px; background: var(--accent); }
 
 /* The board, side panel and hand each own a grid area, so nothing overlaps. */
 .game {
