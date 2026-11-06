@@ -12,6 +12,7 @@
   --glow: #fff2a8;
   --recent: #ffffff;
   --robber-mark: rgba(30, 30, 30, .7);
+  --gain: #2ea043;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color: var(--text);
 }
@@ -300,10 +301,19 @@ a.button:not(.primary):hover { background: var(--surface-2); }
 .handbar button.big { width: auto; min-width: 130px; }
 .card-pile { position: relative; }
 .change { position: absolute; top: -12px; right: -6px; padding: 0 6px; border-radius: 10px; font-style: normal; font-weight: 700; font-size: 13px; color: #fff; animation: float-up .3s ease-out; }
-.change.gain { background: #2ea043; }
+.change.gain { background: var(--gain); }
 .change.loss { background: var(--danger); }
 @keyframes float-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
+/* What the last roll brought; it shows as long as the roll feedback (2.6 s) and fades out */
+.roll-gains { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; animation: gain-fade 2.6s ease-out both; }
+.roll-gain { padding: 1px 8px; border: 2px solid var(--line); border-radius: 10px; background: var(--surface); font-size: 13px; font-weight: 700; color: var(--gain); white-space: nowrap; }
+.gain-badge { display: inline-block; margin-left: 4px; padding: 0 5px; border-radius: 8px; background: var(--gain); color: #fff; font-weight: 700; animation: gain-fade 2.6s ease-out both; }
+@keyframes gain-fade {
+  0% { opacity: 0; transform: translateY(4px); }
+  12%, 75% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; }
+}
 
 .cost { display: inline-flex; gap: 2px; margin-left: 4px; vertical-align: middle; }
 .cost i { width: 7px; height: 7px; border-radius: 50%; border: 1px solid rgba(0, 0, 0, .35); }
