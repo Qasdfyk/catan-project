@@ -9,6 +9,7 @@
   --accent-text: #ffffff;
   --danger: #b3261e;
   --sea: #2c7fa8;
+  --highlight: #e6b93a;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color: var(--text);
 }
@@ -232,6 +233,23 @@ button.full { width: 100%; margin-top: 8px; }
 
 .chat ol { list-style: none; margin: 0 0 6px; padding: 0; max-height: 110px; overflow-y: auto; font-size: 13px; }
 .chat li { overflow-wrap: anywhere; }
+
+.roll-stats summary { display: flex; align-items: baseline; justify-content: space-between; cursor: pointer; list-style: none; }
+.roll-stats summary::-webkit-details-marker { display: none; }
+.roll-stats summary h2 { margin: 0; }
+.roll-stats summary h2::before { content: '▸ '; }
+.roll-stats details[open] summary h2::before { content: '▾ '; }
+.roll-stats summary .muted { font-size: 12px; }
+.roll-bars { list-style: none; margin: 8px 0 4px; padding: 0; display: grid; grid-template-columns: repeat(11, 1fr); gap: 3px; }
+.roll-bars li { display: grid; justify-items: center; gap: 2px; font-size: 11px; font-variant-numeric: tabular-nums; }
+.roll-count { color: var(--muted); }
+.roll-track { position: relative; width: 100%; height: 54px; border-bottom: 1px solid var(--line); }
+.roll-bar { position: absolute; bottom: 0; left: 15%; width: 70%; border-radius: 2px 2px 0 0; background: var(--accent); opacity: .55; transition: height .3s; }
+.roll-expected { position: absolute; left: 0; width: 100%; border-top: 1px dashed var(--muted); opacity: .7; }
+.roll-number { font-weight: 600; }
+.roll-bars li.last .roll-bar { background: var(--highlight); opacity: 1; }
+.roll-bars li.last .roll-number { padding: 0 3px; border-radius: 3px; background: var(--highlight); }
+.roll-stats .hint { margin: 0; font-size: 11px; }
 
 /* --- Look of the game --- */
 body { background: linear-gradient(160deg, #173f5c, #245f80); }

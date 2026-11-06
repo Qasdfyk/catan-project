@@ -9,6 +9,7 @@ import { DevCardsPanel } from './DevCardsPanel';
 import { DiscardDialog } from './DiscardDialog';
 import { PlayerTradePanel, TradeOfferPanel } from './PlayerTrade';
 import { ResourceCards } from './ResourceCards';
+import { RollStats } from './RollStats';
 import { TradePanel } from './TradePanel';
 import { TurnTimer } from './TurnTimer';
 import { WinnerDialog } from './WinnerDialog';
@@ -298,6 +299,8 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
                 />
 
                 <ChatPanel messages={room.chat} players={players} onSend={room.sendChat} />
+
+                <RollStats counts={game.roll_counts} last={game.dice_roll} />
 
                 <section className="panel log" aria-label="Game log">
                     <h2>Log</h2>
