@@ -24,6 +24,7 @@ const game = (changes: Partial<GameView> = {}): GameView => ({
     turn_phase: 'roll_dice',
     dice_roll: null,
     dice: [],
+    roll_counts: Array(11).fill(0),
     setup_waiting_for_road: false,
     robber_hex: null,
     is_game_over: false,
