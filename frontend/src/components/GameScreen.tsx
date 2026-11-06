@@ -10,6 +10,7 @@ import { DiscardDialog } from './DiscardDialog';
 import { GameLog } from './GameLog';
 import { PlayerTradePanel, TradeOfferPanel } from './PlayerTrade';
 import { ResourceCards } from './ResourceCards';
+import { CardGainBadge, RollGains } from './RollGains';
 import { RollStats } from './RollStats';
 import { TradePanel } from './TradePanel';
 import { TurnTimer } from './TurnTimer';
@@ -18,6 +19,7 @@ import { botLabel } from '../utils/bots';
 import { PLAYER_COLORS, PLAYER_TEXT_COLORS } from '../utils/labels';
 import { settingsSummary } from '../utils/settings';
 import { turnPrompt } from '../utils/turnPrompt';
+import { useChanges } from '../utils/useChanges';
 
 type BuildMode = 'settlement' | 'road' | 'city' | null;
 
@@ -53,6 +55,7 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
 
     const [buildMode, setBuildMode] = useState<BuildMode>(null);
     const [winnerClosed, setWinnerClosed] = useState(false);
+    const changes = useChanges(state, mine.resources);
 
     const legal = mine.legal ?? EMPTY_LEGAL;
     const isMyTurn = game.current_seat === mine.seat && !game.is_game_over;
@@ -151,7 +154,7 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
                     </span>
                 )}
                 {game.dice_roll !== null && game.dice.length === 2 && (
-                    <Dice values={game.dice} total={game.dice_roll} />
+                    <Dice key={changes.rollCount} values={game.dice} total={game.dice_roll} rolling={changes.roll !== null} />
                 )}
                 {!room.connected && <span className="offline">Reconnecting…</span>}
             </header>
@@ -167,6 +170,8 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
                     onRoad={(position) => build('build_road', position)}
                     onCity={(position) => build('upgrade_city', position)}
                     onRobber={(hex) => send('move_robber', { hex })}
+                    producing={changes.roll?.producing ?? []}
+                    recent={changes.built}
                 />
             </div>
 
@@ -195,7 +200,7 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
                                     )}
                                 </span>
                                 <span className="player-stats">
-                                    <span title="Resource cards">{player.card_count} {player.card_count === 1 ? 'card' : 'cards'}</span>
+                                    <span title="Resource cards">{player.card_count} {player.card_count === 1 ? 'card' : 'cards'}<CardGainBadge key={changes.rollCount} gain={changes.roll?.cardGains[player.seat]} /></span>
                                     <span title="Development cards">{player.dev_card_count} dev</span>
                                     <span title="Road length">
                                         road {player.road_length}
@@ -287,6 +292,7 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
 
             <footer className="handbar">
                 <ResourceCards resources={mine.resources} />
+                {changes.roll && <RollGains key={changes.rollCount} gains={changes.roll.ownGains} />}
                 {canRoll && (
                     <button className="primary big" title="Shortcut: R" onClick={() => send('roll_dice')}>
                         Roll dice
