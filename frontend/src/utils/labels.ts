@@ -15,6 +15,14 @@ export const PLAYER_COLORS: Record<PlayerColor, string> = {
     orange: '#ee8a1d',
 };
 
+/** Darker shades of the player colours, readable as text on a light background. */
+export const PLAYER_TEXT_COLORS: Record<PlayerColor, string> = {
+    red: '#b8281c',
+    blue: '#2459a8',
+    white: '#77705f',
+    orange: '#b5620b',
+};
+
 export const DEV_CARD_LABELS: Record<DevCard, string> = {
     knight: 'Knight',
     victory_point: 'Victory Point',

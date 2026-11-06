@@ -14,8 +14,9 @@ import { TradePanel } from './TradePanel';
 import { TurnTimer } from './TurnTimer';
 import { WinnerDialog } from './WinnerDialog';
 import { botLabel } from '../utils/bots';
-import { PLAYER_COLORS } from '../utils/labels';
+import { PLAYER_COLORS, PLAYER_TEXT_COLORS } from '../utils/labels';
 import { settingsSummary } from '../utils/settings';
+import { turnPrompt } from '../utils/turnPrompt';
 
 type BuildMode = 'settlement' | 'road' | 'city' | null;
 
@@ -44,33 +45,6 @@ interface GameScreenProps {
     rematchError: string;
 }
 
-const instruction = (game: GameView, current: Player, isMyTurn: boolean, mustDiscard: number): string => {
-    if (mustDiscard > 0) return `Discard ${mustDiscard} cards.`;
-    if (game.turn_phase === 'discard') return 'Waiting for players to discard…';
-
-    if (!isMyTurn) {
-        const doing = game.turn_phase === 'setup' ? 'is placing pieces' : 'is playing';
-        return `${current.name} ${doing}…`;
-    }
-
-    switch (game.turn_phase) {
-        case 'setup':
-            return game.setup_waiting_for_road
-                ? 'Place a road next to your new settlement.'
-                : 'Place a settlement.';
-        case 'roll_dice':
-            return 'Roll the dice.';
-        case 'move_robber':
-            return 'Move the robber to another tile.';
-        case 'steal':
-            return 'Choose a player to steal from.';
-        case 'road_building':
-            return `Place a free road (${game.free_roads_left} left).`;
-        default:
-            return 'Build, trade or end your turn.';
-    }
-};
-
 export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps) => {
     const game = state.game as GameView;
     const players = state.players as Player[];
@@ -80,10 +54,10 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
     const [winnerClosed, setWinnerClosed] = useState(false);
 
     const legal = mine.legal ?? EMPTY_LEGAL;
-    const current = players[game.current_seat];
     const isMyTurn = game.current_seat === mine.seat && !game.is_game_over;
     const inMain = game.turn_phase === 'main_phase';
     const winner = game.winner_seat === null ? null : players[game.winner_seat];
+    const prompt = turnPrompt(game, players, mine.seat, legal.must_discard);
 
     const targets = useMemo<BoardTargets>(() => {
         if (!isMyTurn) return NO_TARGETS;
@@ -153,18 +127,22 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
 
             <header className="topbar">
                 <strong>Catan</strong>
-                <span className="status-text" data-testid="instruction">
-                    {winner
-                        ? `${winner.name} won the game!`
-                        : instruction(game, current, isMyTurn, legal.must_discard)}
-                </span>
-                {state.turn_deadline !== null && (
-                    <TurnTimer
-                        key={`${state.turn_deadline}:${state.server_time}`}
-                        deadline={state.turn_deadline}
-                        serverTime={state.server_time}
-                    />
-                )}
+                <div className={prompt.act ? 'turn-status act' : 'turn-status'}>
+                    {prompt.player && (
+                        <span className="turn-player" style={{ color: PLAYER_TEXT_COLORS[prompt.player.color] }}>
+                            <span className="swatch" style={{ background: PLAYER_COLORS[prompt.player.color] }} />
+                            {prompt.label}
+                        </span>
+                    )}
+                    <span className="status-text" data-testid="instruction">{prompt.text}</span>
+                    {state.turn_deadline !== null && (
+                        <TurnTimer
+                            key={`${state.turn_deadline}:${state.server_time}`}
+                            deadline={state.turn_deadline}
+                            serverTime={state.server_time}
+                        />
+                    )}
+                </div>
                 {(mine.hidden_points ?? 0) > 0 && (
                     <span className="muted" title="Your hidden Victory Point cards">
                         +{mine.hidden_points} hidden VP

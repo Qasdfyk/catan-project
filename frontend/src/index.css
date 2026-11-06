@@ -108,7 +108,12 @@ label.check input { width: auto; margin: 0; flex: none; }
   background: var(--surface);
   border-bottom: 1px solid var(--line);
 }
-.status-text { flex: 1; font-weight: 600; }
+/* Whose turn it is, what to do now and the time left, read together. */
+.turn-status { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.turn-player { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; white-space: nowrap; }
+.status-text { font-weight: 600; }
+.turn-status.act .turn-player::after { content: '—'; margin-left: 4px; color: var(--text); font-weight: 400; }
+.turn-status.act .status-text { font-size: 17px; font-weight: 700; }
 .dice { font-weight: 700; font-size: 18px; }
 .turn-timer { padding: 2px 8px; border-radius: 6px; background: var(--surface-2); font-weight: 700; font-variant-numeric: tabular-nums; }
 .turn-timer.urgent { background: var(--danger); color: #fff; }
