@@ -191,6 +191,7 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
                                     {player.name}
                                     {player.seat === mine.seat && <span className="muted"> (you)</span>}
                                     {player.is_bot && <span className="muted"> ({botLabel(player.bot_level)})</span>}
+                                    <CardGainBadge key={changes.rollCount} gain={changes.roll?.cardGains[player.seat]} />
                                     {!player.is_bot && !room.online.includes(player.seat) && !game.is_game_over && (
                                         <button
                                             className="link"
@@ -200,7 +201,7 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
                                     )}
                                 </span>
                                 <span className="player-stats">
-                                    <span title="Resource cards">{player.card_count} {player.card_count === 1 ? 'card' : 'cards'}<CardGainBadge key={changes.rollCount} gain={changes.roll?.cardGains[player.seat]} /></span>
+                                    <span title="Resource cards">{player.card_count} {player.card_count === 1 ? 'card' : 'cards'}</span>
                                     <span title="Development cards">{player.dev_card_count} dev</span>
                                     <span title="Road length">
                                         road {player.road_length}

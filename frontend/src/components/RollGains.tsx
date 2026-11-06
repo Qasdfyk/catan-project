@@ -18,7 +18,7 @@ export const RollGains = ({ gains }: { gains: Cards }) => {
     );
 };
 
-/** The cards a player got from the last roll, next to their card count. */
+/** The cards a player got from the last roll, next to their name. */
 export const CardGainBadge = ({ gain }: { gain: number | undefined }) => {
     if (!gain) return null;
     return (
