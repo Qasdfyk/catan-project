@@ -121,6 +121,7 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
                     isHost={state.host_seat === mine.seat}
                     rematchStarted={state.rematch_room_id !== null}
                     rematchError={rematchError}
+                    actionError={room.error}
                     onRematch={() => send('rematch')}
                     onClose={() => setWinnerClosed(true)}
                 />

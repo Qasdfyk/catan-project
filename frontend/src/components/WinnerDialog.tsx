@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { Player } from '../types/game';
 import { PLAYER_COLORS } from '../utils/labels';
+import { awaitingRematch } from '../utils/rematch';
 
 interface WinnerDialogProps {
     winner: Player;
@@ -10,18 +11,24 @@ interface WinnerDialogProps {
     /** The host opened the new room and this player is on the way there. */
     rematchStarted: boolean;
     rematchError: string;
+    /** The last action the server refused, while it is on screen. */
+    actionError: string | null;
     onRematch: () => void;
     onClose: () => void;
 }
 
 export const WinnerDialog = ({
-    winner, players, isHost, rematchStarted, rematchError, onRematch, onClose,
+    winner, players, isHost, rematchStarted, rematchError, actionError, onRematch, onClose,
 }: WinnerDialogProps) => {
-    const [requested, setRequested] = useState(false);
+    // The error on screen when the host asked; undefined until they do
+    const [errorWhenRequested, setErrorWhenRequested] = useState<string | null | undefined>(undefined);
+    const requested = awaitingRematch(errorWhenRequested, actionError);
+    // Once answered, forget the request, so the same error coming back later can't block the button
+    if (errorWhenRequested !== undefined && !requested) setErrorWhenRequested(undefined);
     const ranking = [...players].sort((a, b) => b.victory_points - a.victory_points);
 
     const rematch = () => {
-        setRequested(true);
+        setErrorWhenRequested(actionError);
         onRematch();
     };
 
@@ -38,8 +45,8 @@ export const WinnerDialog = ({
                         </li>
                     ))}
                 </ol>
-                {rematchError ? (
-                    <p className="form-error" role="alert">{rematchError}</p>
+                {rematchError || actionError ? (
+                    <p className="form-error" role="alert">{rematchError || actionError}</p>
                 ) : rematchStarted ? (
                     <p className="muted">Joining the rematch…</p>
                 ) : !isHost && (

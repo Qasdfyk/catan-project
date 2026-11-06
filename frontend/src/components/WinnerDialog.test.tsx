@@ -21,7 +21,9 @@ const player = (seat: number, name: string, points: number): Player => ({
 const PLAYERS = [player(0, 'Ann', 10), player(1, 'Bob', 7)];
 
 // No DOM in the test setup: the dialog is rendered to markup and checked as text.
-const render = (isHost: boolean, rematchStarted = false, rematchError = '') => renderToStaticMarkup(
+const render = (
+    isHost: boolean, rematchStarted = false, rematchError = '', actionError: string | null = null,
+) => renderToStaticMarkup(
     <MemoryRouter>
         <WinnerDialog
             winner={PLAYERS[0]}
@@ -29,6 +31,7 @@ const render = (isHost: boolean, rematchStarted = false, rematchError = '') => r
             isHost={isHost}
             rematchStarted={rematchStarted}
             rematchError={rematchError}
+            actionError={actionError}
             onRematch={() => {}}
             onClose={() => {}}
         />
@@ -70,5 +73,13 @@ describe('WinnerDialog', () => {
         expect(markup).toContain('role="alert"');
         expect(markup).toContain('There is no rematch yet.');
         expect(markup).not.toContain('Joining the rematch…');
+    });
+
+    it('shows the host why the server refused the rematch', () => {
+        const markup = render(true, false, '', 'Only the host can start a rematch.');
+
+        expect(markup).toContain('role="alert"');
+        expect(markup).toContain('Only the host can start a rematch.');
+        expect(button(markup, 'Rematch')).not.toContain('disabled');
     });
 });
