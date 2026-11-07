@@ -57,14 +57,15 @@ The game is then at <http://localhost:5173>, and `Ctrl+C` stops everything.
 ## Architecture
 
 ```
-browser ── /api ──▶ FastAPI (rules, rooms) ──▶ Redis (state, lock, pub/sub)
+browser ── /api ──▶ FastAPI (rules, rooms) ──▶ Redis (state, lock, stream)
    └────── /ws ───▶ Go gateway (connections) ◀── room events ──┘
                        ▲ └── actions over HTTP ──▶ FastAPI
     Go bots ── /ws ────┘
 ```
 
 - **backend/** (Python) decides everything. Each change runs load, validate, save and
-  publish under a per-room Redis lock, so any number of workers can serve a room.
+  append to the event stream under a per-room Redis lock, so any number of workers can
+  serve a room.
 - **gateway/** (Go) holds the WebSocket connections and room membership. It forwards actions
   and fans out events, giving each seat only its own private state. It knows no game rules.
 - **gateway/cmd/bots** (Go) runs one goroutine per bot. A bot is an ordinary client that picks
