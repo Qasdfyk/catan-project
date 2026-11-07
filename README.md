@@ -1,31 +1,49 @@
 # Catan
 
-Catan for 2–4 players in the browser, with friends over an invite link or against bots.
-The full base game: setup, dice, building, the robber, development cards, bank, port and
-player trade, Longest Road, Largest Army and a win at 10 points, plus chat.
+**The board game for 2–4 players in the browser, built like a real-time service.** Play with friends over an invite link or against bots at three levels. The rules live in one Python service; a Go gateway holds the WebSockets; Redis keeps the state and streams the events.
+
+![Python](https://img.shields.io/badge/Python-FastAPI-3776AB?logo=python&logoColor=white)
+![Go](https://img.shields.io/badge/Go-gateway%20%26%20bots-00ADD8?logo=go&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-React%20%2B%20SVG-3178C6?logo=typescript&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-state%20%26%20streams-DC382D?logo=redis&logoColor=white)
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
+
+![A game in progress](docs/images/game.png)
+
+## Highlights
+
+- **The whole base game:** setup, dice, building, the robber, development cards, bank, port and player trade, Longest Road, Largest Army, chat.
+- **Stateless rules service:** every action is load, validate, save and publish under a per-room Redis lock, so workers scale without sticky sessions (185 → 702 actions/s from 1 to 8 workers).
+- **Go gateway that knows no rules:** p99 of 1.3 ms fanning out 4,000 messages/s to 4,000 connections, where python-socketio reached 24.4 ms.
+- **Nothing lost on a dropped connection:** room events and bot seats go through Redis Streams; the gateway resumes from the last event it delivered, and bot seats survive restarts and crashes.
+- **Bots measured, not guessed:** in 400-game tournaments a hard bot wins 71.5% against three medium bots, where a fair share is 25%.
+- **Tested at every level:** unit and integration tests with a 90% coverage gate, random full games that check the rules after every action, and a Playwright game in real browser tabs against hard bots.
+
+All numbers come from [docs/benchmarks.md](docs/benchmarks.md); the trade-offs are in [docs/design.md](docs/design.md).
+
+## The game
 
 The host can change the rules in the lobby: points to win (6–15), the hand limit on a 7,
 the desert in the centre and a friendly robber that spares players with 2 points or fewer.
 One click sets the rules we recommend for two players. The server checks every setting,
 and they cannot change once the game has started.
 
+<img src="docs/images/lobby.png" alt="The lobby with the rules recommended for two players" width="360">
+
 A turn can have a time limit of 60 to 180 seconds, shown as a countdown to everyone. When it
 runs out, the server makes the moves the rules require (rolling, discarding, moving the robber)
 and passes the turn. After a game the host can start a rematch, which moves every player to a
 new room with the same seats and rules.
 
-<img src="docs/images/lobby.png" alt="The lobby with the rules recommended for two players" width="360">
-
 Bots play at three levels, chosen by the host for each bot. In 400 games against three medium
-bots an easy bot won 10% of the time and a hard bot 71.5%, against a fair share of 25%
+bots an easy bot won 10% of the time and a hard bot 71.5%
 ([docs/benchmarks.md](docs/benchmarks.md#bot-tournament)). The hard bot saves for a goal,
 plans its roads toward the best free spot and offers trades to the other players.
 If a player leaves, anyone can hand their seat to a bot, and they can take it back by name.
+
 After each roll the board lights up the tiles that produced and shows who got how many cards.
 The side panel keeps a histogram of the dice totals and a log in the players' colours.
 Shortcuts in the game: `R` rolls, `E` ends the turn, `Esc` leaves build mode.
-
-![A game in progress](docs/images/game.png)
 
 ## Running
 
@@ -135,3 +153,11 @@ BASE_URL=http://localhost:5173 PLAYERS=2 BOTS=0 npm test
 
 `BOTS` adds bots to the room, `BOT_LEVEL` sets their level, and `PLAYERS` sets the number of
 tabs. A game takes several minutes, because the tabs play by clicking, with a simple strategy.
+
+## What's next
+
+[catan-analysis-engine](https://github.com/Qasdfyk/catan-analysis-engine) will review finished games from this one, in the spirit of a chess game review: a grade for every decision, the better move and how the chances of winning changed.
+
+## License
+
+MIT. Catan is a trademark of its owner; this is a non-commercial fan project, not affiliated with it.
