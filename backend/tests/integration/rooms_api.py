@@ -1,8 +1,11 @@
 """Requests the gateway and the browser make, shared by the integration tests."""
+import json
+
 from app.core.config import settings
 from app.main import app
 from app.models.game import Building, BuildingType, TurnPhase
 from app.models.hex_lib import Hex, Vertex
+from app.services.redis_service import BOTS_STREAM
 from app.services.serializer import GameSerializer
 
 HEADERS = {"X-Internal-Key": settings.INTERNAL_API_KEY}
@@ -48,6 +51,22 @@ async def started_room(client):
     response = await act(client, host["room_id"], host["token"], "start_game")
     assert response.status_code == 200
     return host, guest
+
+
+async def last_summon():
+    """The newest entry of the bot stream, to read only what a test adds after it."""
+    entries = await app.state.redis.redis.xrevrange(BOTS_STREAM, count=1)
+    return entries[0][0] if entries else "0-0"
+
+
+async def summoned_since(entry):
+    """The bots asked for after a stream entry, oldest first."""
+    entries = await app.state.redis.redis.xrange(BOTS_STREAM, min=f"({entry}")
+    return [json.loads(fields["data"]) for _, fields in entries]
+
+
+async def clear_bots():
+    await app.state.redis.redis.delete(BOTS_STREAM)
 
 
 async def edit_game(room_id, change):

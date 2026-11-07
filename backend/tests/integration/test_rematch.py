@@ -5,8 +5,10 @@ import pytest
 from app.main import app
 from app.models.game import TurnPhase
 from app.models.player import DevCard
-from app.services.redis_service import ACTIVE_BOTS_KEY, BOTS_CHANNEL, EVENTS_CHANNEL
-from rooms_api import act, create_room, edit_game, join, past_setup, session, started_room
+from app.services.redis_service import EVENTS_CHANNEL
+from rooms_api import (
+    act, clear_bots, create_room, edit_game, join, last_summon, past_setup, session, started_room, summoned_since,
+)
 
 CHOSEN = {"victory_points": 8, "discard_limit": 9, "desert": "center", "friendly_robber": True, "turn_seconds": 90}
 
@@ -35,10 +37,6 @@ async def finished_room(client, guests=("Bob",), bots=0):
 
 async def rematch(client, room_id, token):
     return await client.post(f"/api/rooms/{room_id}/rematch", json={"token": token})
-
-
-async def clear_bots():
-    await app.state.redis.redis.delete(ACTIVE_BOTS_KEY)
 
 
 @pytest.mark.asyncio
@@ -176,14 +174,10 @@ async def test_bots_play_the_rematch_too(client):
     state = await session(client, new["room_id"], new["token"])
     assert [p["is_bot"] for p in state["public"]["players"]] == [False, True]
 
-    pubsub = app.state.redis.redis.pubsub()
-    await pubsub.subscribe(BOTS_CHANNEL)
-    await pubsub.get_message(timeout=1)
+    before = await last_summon()
     await act(client, new["room_id"], new["token"], "start_game")
 
-    message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=2)
-    await pubsub.aclose()
-    bot = json.loads(message["data"])
+    (bot,) = await summoned_since(before)
     assert bot["room_id"] == new["room_id"]
     assert bot["token"] != old_bot
     assert (await session(client, new["room_id"], bot["token"]))["seat"] == 1

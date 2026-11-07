@@ -4,8 +4,9 @@ from redis.asyncio.lock import Lock
 from app.core.config import settings
 
 EVENTS_CHANNEL = "catan:events"
-BOTS_CHANNEL = "catan:bots"
-ACTIVE_BOTS_KEY = "catan:active_bots"
+BOTS_STREAM = "catan:bots"
+# Far more than the seats of all running games, so no live seat is trimmed
+BOTS_STREAM_MAXLEN = 10_000
 TURN_DEADLINES_KEY = "catan:turn_deadlines"
 ROOM_TTL_SECONDS = 24 * 3600
 
@@ -47,10 +48,12 @@ class RedisService:
         await self.redis.publish(EVENTS_CHANNEL, json.dumps(event))
 
     async def summon_bot(self, room_id: str, token: str, level: str):
-        """Asks the bot service to take a seat. The set lets it recover after a restart."""
+        """
+        Asks the bot service to take a seat. The stream keeps the request while
+        the service is down, and the service acknowledges it when the seat is over.
+        """
         bot = json.dumps({"room_id": room_id, "token": token, "level": level})
-        await self.redis.sadd(ACTIVE_BOTS_KEY, bot)
-        await self.redis.publish(BOTS_CHANNEL, bot)
+        await self.redis.xadd(BOTS_STREAM, {"data": bot}, maxlen=BOTS_STREAM_MAXLEN, approximate=True)
 
     async def set_turn_deadline(self, room_id: str, deadline: float):
         """The bot service polls this set and reports each room whose time is up."""
