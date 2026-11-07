@@ -10,7 +10,7 @@ second and 0.8 messages per second.
 
 ## Fan-out: Go gateway and python-socketio
 
-`gateway/cmd/loadtest` publishes 7.7 kB room events to Redis and times their delivery to
+`gateway/cmd/loadtest` adds 7.7 kB room events to Redis and times their delivery to
 rooms of 4. `benchmarks/socketio_baseline.py` does the same job with python-socketio in one
 process, and sends each client its own message, as the gateway does.
 
@@ -69,6 +69,28 @@ reach a client through the other instance:
 This confirms that the path works across instances. Latency here is high because the machine
 was at its limit with two gateways and four load generators, so it says nothing about the
 cost of the second gateway.
+
+## Redis Streams
+
+Room events moved from pub/sub to a Redis stream (see the [design notes](design.md)). The
+event-path part of `benchmarks/run.sh` (gateway fan-out, and throughput.py through one
+gateway) ran twice on the code before and twice after, alternating, on the machine above on
+2026-11-07. Each cell shows both runs.
+
+| Measurement | Pub/sub | Stream |
+| --- | --- | --- |
+| Fan-out, 400 connections, 400 messages/s | p50 0.6 / 0.6 ms, p99 1.1 / 0.9 ms | p50 0.6 / 0.5 ms, p99 1.3 / 1.0 ms |
+| Fan-out, 4,000 connections, 4,000 messages/s | p50 0.4 / 0.4 ms, p99 0.8 / 2.2 ms | p50 0.5 / 0.4 ms, p99 1.0 / 0.8 ms |
+| Fan-out, 4,000 connections, 16,000/s requested | 55,801 / 57,557 events, p99 1.3 / 0.9 ms | 52,692 / 57,674 events, p99 1.7 / 1.0 ms |
+| 4 workers, 100 rooms | 495 / 495 actions/s, p50 5.3 / 7.3 ms | 496 / 495 actions/s, p50 7.6 / 5.3 ms |
+| 4 workers, 400 rooms | 830 / 830 actions/s, p50 440 / 436 ms | 815 / 820 actions/s, p50 448 / 448 ms |
+| 8 workers, 400 rooms | 992 / 1,143 actions/s | 1,073 / 1,178 actions/s |
+
+The differences are within the spread between runs, so the stream costs nothing measurable.
+A first version that called `XINFO STREAM` after every read to look for trimmed events did
+cost a lot: 561 actions/s instead of 830 with 4 workers, and a fan-out p50 of 1.2 ms at the
+top rate: one more round trip per batch, and its reply carries the first and last events
+in full. Checking only after a full batch removed that.
 
 ## Measured once, not part of the script
 
