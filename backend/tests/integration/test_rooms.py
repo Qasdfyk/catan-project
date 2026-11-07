@@ -9,9 +9,9 @@ from app.models.settings import GameSettings
 from app.services.serializer import GameSerializer
 from app.services.views import public_view
 from app.main import app
-from app.services.redis_service import EVENTS_CHANNEL
 from rooms_api import (
-    CENTER, act, clear_bots, create_room, join, last_summon, lasting_state, session, started_room, summoned_since,
+    CENTER, act, clear_bots, create_room, join, last_summon, lasting_state, next_event, session, started_room,
+    stream_tail, summoned_since,
 )
 
 
@@ -183,15 +183,11 @@ async def test_internal_endpoints_need_the_key(client):
 async def test_views_hide_tokens_and_other_hands(client):
     """Regression: player IDs were broadcast to everyone in the game state."""
     host, guest = await started_room(client)
-    pubsub = app.state.redis.redis.pubsub()
-    await pubsub.subscribe(EVENTS_CHANNEL)
-    await pubsub.get_message(timeout=1)
+    after = await stream_tail()
 
     await act(client, host["room_id"], host["token"], "build_settlement", {"hex": CENTER, "direction": 0})
 
-    message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=2)
-    await pubsub.aclose()
-    raw = message["data"]
+    raw = await next_event(host["room_id"], after)
     event = json.loads(raw)
     assert host["token"] not in raw
     assert guest["token"] not in raw

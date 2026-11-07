@@ -5,7 +5,7 @@ from app.core.config import settings
 from app.main import app
 from app.models.game import Building, BuildingType, TurnPhase
 from app.models.hex_lib import Hex, Vertex
-from app.services.redis_service import BOTS_STREAM
+from app.services.redis_service import BOTS_STREAM, EVENTS_STREAM
 from app.services.serializer import GameSerializer
 
 HEADERS = {"X-Internal-Key": settings.INTERNAL_API_KEY}
@@ -43,6 +43,23 @@ async def lasting_state(client, room_id, token):
     state = await session(client, room_id, token)
     del state["public"]["server_time"]
     return state
+
+
+async def stream_tail():
+    """The stream ID after which the next room event lands, read like the gateway does."""
+    entries = await app.state.redis.redis.xrevrange(EVENTS_STREAM, count=1)
+    return entries[0][0] if entries else "0-0"
+
+
+async def next_event(room_id, after):
+    """The raw JSON of the room's first event after the given stream ID."""
+    while True:
+        reply = await app.state.redis.redis.xread({EVENTS_STREAM: after}, block=2000)
+        assert reply, "no event arrived"
+        for entry_id, fields in reply[0][1]:
+            after = entry_id
+            if json.loads(fields["data"])["room_id"] == room_id:
+                return fields["data"]
 
 
 async def started_room(client):

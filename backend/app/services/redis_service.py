@@ -3,7 +3,7 @@ from redis.asyncio import Redis
 from redis.asyncio.lock import Lock
 from app.core.config import settings
 
-EVENTS_CHANNEL = "catan:events"
+EVENTS_STREAM = "catan:events"
 BOTS_STREAM = "catan:bots"
 # Far more than the seats of all running games, so no live seat is trimmed
 BOTS_STREAM_MAXLEN = 10_000
@@ -45,7 +45,13 @@ class RedisService:
         return {seat for seat, value in enumerate(values) if value is not None}
 
     async def publish_event(self, event: dict):
-        await self.redis.publish(EVENTS_CHANNEL, json.dumps(event))
+        """Appends to a stream, so a gateway that loses Redis can read on from where it stopped."""
+        await self.redis.xadd(
+            EVENTS_STREAM,
+            {"data": json.dumps(event)},
+            maxlen=settings.EVENTS_STREAM_MAXLEN,
+            approximate=True,
+        )
 
     async def summon_bot(self, room_id: str, token: str, level: str):
         """

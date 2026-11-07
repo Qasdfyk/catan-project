@@ -15,13 +15,34 @@ and the bots read the same list, and the UI cannot drift from the rules.
 2. The gateway forwards it over HTTP with the seat's token.
 3. The backend takes the room's Redis lock, loads the state, checks the token, applies the
    action and saves the result.
-4. Still under the lock, it publishes one event to Redis: the public state plus a private
-   part for each seat.
-5. Every gateway subscribed to the channel sends each of its clients the public state and
+4. Still under the lock, it appends one event to the Redis stream `catan:events`: the public
+   state plus a private part for each seat.
+5. Every gateway reads the whole stream and sends each of its clients the public state and
    only that client's private part.
 
-Publishing under the lock gives each room a total order of events. A `version` number covers
+Appending under the lock gives each room a total order of events. A `version` number covers
 the one race that is left, when a client reconnects and an event overtakes its snapshot.
+
+## Events go through a stream, chat through pub/sub
+
+Each gateway reads the stream with `XREAD BLOCK` and remembers the ID of the last event it
+delivered. A plain reader fits better than a consumer group, because every gateway needs every
+event. A new gateway starts at the end of the stream: it has no clients yet, and each client
+starts from a snapshot. When its Redis connection drops, it waits with backoff and reads on
+from the last ID, so nothing is lost. `gateway/internal/server/events_redis_test.go` checks
+that by killing the reader's connection over and over while 3,000 events go through.
+
+The backend caps the stream with `XADD MAXLEN ~ 10000` (`EVENTS_STREAM_MAXLEN`), so Redis
+memory stays bounded, at about 10,000 events of a few kB each. The cost is that a gateway
+more than that far behind finds events trimmed before it read them. It cannot tell which
+rooms they were for, so it fetches a new snapshot for every connected client, the same one a
+client gets when it connects, and disconnects any client whose snapshot fails, so the
+browser reconnects. It notices a trim when the oldest entry kept is newer than the last one
+it delivered. That check costs an `XINFO STREAM` call, so it runs only after a full batch of
+100, at the start and after an error: a shorter batch means the gateway had caught up.
+
+Chat stays on pub/sub. A client that misses a message gets the room's last 50 when it
+reconnects, which is all the history chat promises.
 
 ## Why state is reloaded for every action
 
@@ -71,6 +92,7 @@ once its deadline has passed.
 | --- | --- |
 | A tab closes | The seat shows as offline. The player returns by name, or anyone hands the seat to a bot |
 | The gateway restarts | Clients reconnect with backoff and resync from a snapshot |
+| A gateway loses Redis for a while | It reads on from its last event when Redis is back; if the stream was trimmed past that, every client gets a new snapshot |
 | A client cannot keep up | Its connection is dropped, so it cannot block others, and it resyncs on reconnect |
 | The bot service restarts | Bots resume their seats at once after a clean stop, within about 2 minutes after a crash |
 | One of several bot instances dies | The others take its seats over within about 2 minutes |
@@ -79,8 +101,9 @@ once its deadline has passed.
 
 ## Known limits
 
-- Redis is a single point of failure, and pub/sub delivers at most once. A gateway that loses
-  its subscription misses events until its clients next receive a state.
+- Redis is a single point of failure. Room events survive a dropped connection, but chat is
+  still delivered at most once, and a message sent while a gateway is cut off reaches its
+  clients only with the history on their next connection.
 - An offline player is replaced only when someone asks for it. The turn timer, if the room
   has one, only finishes their turns.
 - The bot stream is capped at about 10,000 entries. A seat summoned that many summons ago and
