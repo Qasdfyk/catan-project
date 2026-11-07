@@ -62,6 +62,7 @@ func (r *EventReader) Run(ctx context.Context) {
 	}
 
 	last := ""
+	check := true
 	for ctx.Err() == nil {
 		if last == "" {
 			info, err := r.Log.Info(ctx)
@@ -75,6 +76,7 @@ func (r *EventReader) Run(ctx context.Context) {
 		entries, err := r.Log.Read(ctx, last)
 		if err != nil {
 			fail(err)
+			check = true
 			continue
 		}
 		retry = r.firstRetry()
@@ -82,19 +84,26 @@ func (r *EventReader) Run(ctx context.Context) {
 			continue
 		}
 
-		// Checked after the read, so a trim that happened before it is seen.
-		info, err := r.Log.Info(ctx)
-		if err != nil {
-			fail(err) // the batch is read again
-			continue
-		}
-		if missedEntries(info, last) {
-			// The missing events could be for any room, so every client gets
-			// a new snapshot. Doing it before reading on keeps snapshots newer
-			// than anything missed; the browser drops states older than it has.
-			r.Metrics.Resyncs.Add(1)
-			log.Printf("events: the stream was trimmed past %s, resyncing all clients", last)
-			r.Hub.Resync(ctx, r.Backend)
+		// A batch shorter than the limit reached the end of the stream, and the
+		// next read follows within milliseconds, far too soon for MAXLEN new
+		// entries to push unread ones out. So the stream is only checked when
+		// the reader is behind, or after a gap in reading: the start or an error.
+		// It is checked after the read, so a trim before the read is seen.
+		if check || len(entries) >= eventsReadCount {
+			info, err := r.Log.Info(ctx)
+			if err != nil {
+				fail(err) // the batch is read again
+				continue
+			}
+			if missedEntries(info, last) {
+				// The missing events could be for any room, so every client
+				// gets a new snapshot. Doing it before reading on keeps snapshots
+				// newer than anything missed; the browser drops older states.
+				r.Metrics.Resyncs.Add(1)
+				log.Printf("events: the stream was trimmed past %s, resyncing all clients", last)
+				r.Hub.Resync(ctx, r.Backend)
+			}
+			check = false
 		}
 
 		for _, entry := range entries {

@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// fakeLog serves entries two at a time, so reads span several batches.
+// fakeLog serves entries in batches of the size the Redis reader asks for.
 type fakeLog struct {
 	mu        sync.Mutex
 	entries   []LoggedEvent
@@ -22,10 +22,17 @@ type fakeLog struct {
 }
 
 func (l *fakeLog) add(roomID string, version int) {
+	l.addRange(roomID, version, version)
+}
+
+// addRange adds the versions from first to last at once, as one batch can hold.
+func (l *fakeLog) addRange(roomID string, first, last int) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	data := fmt.Sprintf(`{"room_id":%q,"public":{"version":%d},"private":{"0":{}}}`, roomID, version)
-	l.entries = append(l.entries, LoggedEvent{ID: fmt.Sprintf("%d-0", version), Data: data})
+	for version := first; version <= last; version++ {
+		data := fmt.Sprintf(`{"room_id":%q,"public":{"version":%d},"private":{"0":{}}}`, roomID, version)
+		l.entries = append(l.entries, LoggedEvent{ID: fmt.Sprintf("%d-0", version), Data: data})
+	}
 }
 
 func (l *fakeLog) failNextReads(count int) {
@@ -57,7 +64,7 @@ func (l *fakeLog) Read(_ context.Context, after string) ([]LoggedEvent, error) {
 	}
 	var batch []LoggedEvent
 	for _, entry := range l.entries {
-		if compareIDs(entry.ID, after) > 0 && len(batch) < 2 {
+		if compareIDs(entry.ID, after) > 0 && len(batch) < eventsReadCount {
 			batch = append(batch, entry)
 		}
 	}
@@ -159,24 +166,22 @@ func TestReaderStartsAfterTheNewestEntry(t *testing.T) {
 func TestReaderKeepsTheOrderAcrossBatches(t *testing.T) {
 	metrics := &Metrics{}
 	hub := NewHub(newFakePresence(), metrics)
-	c := roomClient(hub, 16)
+	c := roomClient(hub, 512)
 	log := &fakeLog{}
 	startReader(t, log, hub, &fakeBackend{})
 	log.waitForReads(t)
 
-	for version := 1; version <= 7; version++ {
-		log.add("room", version)
-	}
-	log.add("other", 8)
+	log.addRange("room", 1, 250)
+	log.add("other", 251)
 
-	if got := receiveVersions(t, c, 7); !slices.Equal(got, versionsFrom(1, 7)) {
+	if got := receiveVersions(t, c, 250); !slices.Equal(got, versionsFrom(1, 250)) {
 		t.Fatalf("got %v", got)
 	}
 	deadline := time.Now().Add(2 * time.Second)
-	for metrics.EventsRead.Load() != 8 && time.Now().Before(deadline) {
+	for metrics.EventsRead.Load() != 251 && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}
-	if metrics.EventsRead.Load() != 8 || metrics.Resyncs.Load() != 0 {
+	if metrics.EventsRead.Load() != 251 || metrics.Resyncs.Load() != 0 {
 		t.Fatalf("read %d, resyncs %d", metrics.EventsRead.Load(), metrics.Resyncs.Load())
 	}
 }
@@ -193,9 +198,7 @@ func TestReaderResumesFromTheLastEventAfterAnError(t *testing.T) {
 	receiveVersions(t, c, 2)
 
 	log.failNextReads(3)
-	for version := 3; version <= 6; version++ {
-		log.add("room", version)
-	}
+	log.addRange("room", 3, 6)
 
 	if got := receiveVersions(t, c, 4); !slices.Equal(got, versionsFrom(3, 6)) {
 		t.Fatalf("got %v", got)
@@ -239,6 +242,33 @@ func TestReaderResyncsEveryClientWhenTheStreamWasTrimmedPastIt(t *testing.T) {
 	}
 	if h.metrics.Resyncs.Load() != 1 {
 		t.Fatalf("resyncs: %d", h.metrics.Resyncs.Load())
+	}
+}
+
+func TestReaderThatFellBehindNoticesTheTrim(t *testing.T) {
+	metrics := &Metrics{}
+	hub := NewHub(newFakePresence(), metrics)
+	c := roomClient(hub, 512)
+	backend := &fakeBackend{seats: map[string]int{"": 0}, public: json.RawMessage(`{"version":999}`)}
+	log := &fakeLog{}
+	log.add("room", 1)
+	startReader(t, log, hub, backend)
+	log.waitForReads(t)
+	log.add("room", 2)
+	receiveVersions(t, c, 1)
+
+	// While the reader was away, 3 to 199 came and were trimmed.
+	log.mu.Lock()
+	log.trimmed, log.first = true, "200-0"
+	log.mu.Unlock()
+	log.addRange("room", 200, 399)
+
+	got := receiveVersions(t, c, 201)
+	if got[0] != 999 || !slices.Equal(got[1:], versionsFrom(200, 399)) {
+		t.Fatalf("expected a snapshot, then 200 to 399, got %v", got)
+	}
+	if metrics.Resyncs.Load() != 1 {
+		t.Fatalf("resyncs: %d", metrics.Resyncs.Load())
 	}
 }
 
