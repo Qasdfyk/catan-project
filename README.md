@@ -68,8 +68,9 @@ browser ── /api ──▶ FastAPI (rules, rooms) ──▶ Redis (state, loc
 - **gateway/** (Go) holds the WebSocket connections and room membership. It forwards actions
   and fans out events, giving each seat only its own private state. It knows no game rules.
 - **gateway/cmd/bots** (Go) runs one goroutine per bot. A bot is an ordinary client that picks
-  from the moves the server calls legal, so it repeats no rule. Run one instance: seats are
-  kept in Redis and resumed after a restart.
+  from the moves the server calls legal, so it repeats no rule. Seats come from a Redis
+  stream with a consumer group, so several instances can share them and seats are resumed
+  after a restart.
 - **frontend/** (React, TypeScript, SVG) renders the state and the legal moves it receives.
 
 Each seat has a secret token, kept in `sessionStorage`, so every tab is a separate player.
