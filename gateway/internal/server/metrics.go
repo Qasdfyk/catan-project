@@ -15,6 +15,9 @@ type Metrics struct {
 	Connections     atomic.Int64
 	Actions         atomic.Int64
 	EventsDelivered atomic.Int64
+	EventsRead      atomic.Int64
+	EventReadErrors atomic.Int64
+	Resyncs         atomic.Int64
 	RateLimited     atomic.Int64
 	ClientsDropped  atomic.Int64
 
@@ -43,6 +46,9 @@ func (m *Metrics) Handler(hub *Hub) http.Handler {
 		fmt.Fprintf(w, "catan_gateway_connections_total %d\n", m.Connections.Load())
 		fmt.Fprintf(w, "catan_gateway_actions_total %d\n", m.Actions.Load())
 		fmt.Fprintf(w, "catan_gateway_events_delivered_total %d\n", m.EventsDelivered.Load())
+		fmt.Fprintf(w, "catan_gateway_events_read_total %d\n", m.EventsRead.Load())
+		fmt.Fprintf(w, "catan_gateway_event_read_errors_total %d\n", m.EventReadErrors.Load())
+		fmt.Fprintf(w, "catan_gateway_resyncs_total %d\n", m.Resyncs.Load())
 		fmt.Fprintf(w, "catan_gateway_rate_limited_total %d\n", m.RateLimited.Load())
 		fmt.Fprintf(w, "catan_gateway_clients_dropped_total %d\n", m.ClientsDropped.Load())
 
