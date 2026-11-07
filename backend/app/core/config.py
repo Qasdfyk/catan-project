@@ -5,6 +5,8 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     # Shared with the Go gateway; protects the /internal endpoints
     INTERNAL_API_KEY: str = "dev-internal-key"
+    # Room events kept in the stream; a gateway that falls further behind resyncs its clients
+    EVENTS_STREAM_MAXLEN: int = 10000
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

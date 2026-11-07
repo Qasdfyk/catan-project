@@ -5,8 +5,8 @@ import pytest
 from app.main import app
 from app.models.game import TurnPhase
 from app.models.player import DevCard
-from app.services.redis_service import ACTIVE_BOTS_KEY, BOTS_CHANNEL, EVENTS_CHANNEL
-from rooms_api import act, create_room, edit_game, join, past_setup, session, started_room
+from app.services.redis_service import ACTIVE_BOTS_KEY, BOTS_CHANNEL
+from rooms_api import act, create_room, edit_game, join, next_event, past_setup, session, started_room, stream_tail
 
 CHOSEN = {"victory_points": 8, "discard_limit": 9, "desert": "center", "friendly_robber": True, "turn_seconds": 90}
 
@@ -72,15 +72,11 @@ async def test_rematch_opens_a_lobby_with_the_same_players(client):
 @pytest.mark.asyncio
 async def test_everyone_hears_of_the_rematch(client):
     host, _ = await finished_room(client)
-    pubsub = app.state.redis.redis.pubsub()
-    await pubsub.subscribe(EVENTS_CHANNEL)
-    await pubsub.get_message(timeout=1)
+    after = await stream_tail()
 
     await act(client, host["room_id"], host["token"], "rematch")
 
-    message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=2)
-    await pubsub.aclose()
-    event = json.loads(message["data"])
+    event = json.loads(await next_event(host["room_id"], after))
     assert event["room_id"] == host["room_id"]
     assert event["public"]["rematch_room_id"] is not None
 
@@ -232,19 +228,16 @@ async def test_player_back_in_the_old_room_takes_the_seat_from_the_bot(client):
 @pytest.mark.asyncio
 async def test_rematch_tokens_stay_secret(client):
     host, (guest,) = await finished_room(client, bots=1)
-    pubsub = app.state.redis.redis.pubsub()
-    await pubsub.subscribe(EVENTS_CHANNEL)
-    await pubsub.get_message(timeout=1)
+    after = await stream_tail()
 
     await act(client, host["room_id"], host["token"], "rematch")
 
-    message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=2)
-    await pubsub.aclose()
+    raw = await next_event(host["room_id"], after)
     room = await app.state.redis.get_room(host["room_id"])
     hidden = [entry["rematch_token"] for entry in room["seats"]]
     new_id = room["rematch_room_id"]
     texts = [
-        message["data"],
+        raw,
         json.dumps(await session(client, host["room_id"], guest["token"])),
         (await client.get(f"/api/rooms/{host['room_id']}")).text,
         (await client.get(f"/api/rooms/{new_id}")).text,
