@@ -1,6 +1,8 @@
-// Loadtest measures fan-out: it opens connections, publishes room events through
-// Redis and times their delivery. By default it joins the running stack with real
-// player sessions; -socketio targets benchmarks/socketio_baseline.py instead.
+// Loadtest measures fan-out: it opens connections, adds room events to the Redis
+// stream as the backend does and times their delivery. By default it joins the
+// running stack with real player sessions; -socketio targets
+// benchmarks/socketio_baseline.py instead, which still listens on the pub/sub
+// channel the project first used.
 //
 //	go run ./cmd/loadtest -players 4000 -rate 1 -seconds 15
 package main
@@ -171,7 +173,13 @@ func main() {
 			`{"room_id":%q,"public":{"sent_at":%d,"pad":%q},"private":{"0":{},"1":{},"2":{},"3":{}}}`,
 			roomIDs[sent%rooms], time.Now().UnixNano(), padding,
 		)
-		publisher.Publish(ctx, "catan:events", event)
+		if *socketio != "" {
+			publisher.Publish(ctx, "catan:events", event)
+		} else {
+			publisher.XAdd(ctx, &redis.XAddArgs{
+				Stream: "catan:events", MaxLen: 10000, Approx: true, Values: map[string]any{"data": event},
+			})
+		}
 		sent++
 	}
 	time.Sleep(3 * time.Second)
