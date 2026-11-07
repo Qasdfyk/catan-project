@@ -13,7 +13,7 @@
 ## Highlights
 
 - **The whole base game:** setup, dice, building, the robber, development cards, bank, port and player trade, Longest Road, Largest Army, chat.
-- **Stateless rules service:** every action is load, validate, save and publish under a per-room Redis lock, so workers scale without sticky sessions: 185 → 702 actions/s from 1 to 8 workers.
+- **Stateless rules service:** every action is load, validate, save and publish under a per-room Redis lock, so workers scale without sticky sessions (185 → 702 actions/s from 1 to 8 workers).
 - **Go gateway that knows no rules:** p99 of 1.3 ms fanning out 4,000 messages/s to 4,000 connections, where python-socketio reached 24.4 ms.
 - **Nothing lost on a dropped connection:** room events and bot seats go through Redis Streams; the gateway resumes from the last event it delivered, and bot seats survive restarts and crashes.
 - **Bots measured, not guessed:** in 400-game tournaments a hard bot wins 71.5% against three medium bots, where a fair share is 25%.
