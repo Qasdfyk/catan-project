@@ -3,17 +3,21 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"log"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 )
 
 const (
-	eventsChannel = "catan:events"
-	chatChannel   = "catan:chat"
-	presenceTTL   = 45 * time.Second
+	EventsStream    = "catan:events"
+	eventsReadCount = 100
+	eventsReadBlock = 5 * time.Second
+
+	chatChannel = "catan:chat"
+	presenceTTL = 45 * time.Second
 
 	chatHistorySize = 50
 	chatHistoryTTL  = 24 * time.Hour
@@ -84,25 +88,61 @@ func (p RedisPresence) Clear(ctx context.Context, roomID string, seat int) error
 	return p.Client.Del(ctx, presenceKey(roomID, seat)).Err()
 }
 
-// ConsumeEvents forwards room events and chat to the hub until the context
-// ends. The client resubscribes after losing Redis, and keepalive pings notice that.
-func ConsumeEvents(ctx context.Context, client *redis.Client, hub *Hub) {
-	subscription := client.Subscribe(ctx, eventsChannel, chatChannel)
+// RedisEventLog reads the stream the backend appends room events to.
+type RedisEventLog struct {
+	Client *redis.Client
+	Key    string
+}
+
+func (l RedisEventLog) Info(ctx context.Context) (StreamInfo, error) {
+	info, err := l.Client.XInfoStream(ctx, l.Key).Result()
+	if err != nil {
+		// Until the backend writes the first event, the stream does not exist.
+		if strings.Contains(err.Error(), "no such key") {
+			return StreamInfo{Last: "0-0", First: "0-0"}, nil
+		}
+		return StreamInfo{}, err
+	}
+	return StreamInfo{
+		Last:    info.LastGeneratedID,
+		First:   info.RecordedFirstEntryID,
+		Trimmed: info.EntriesAdded > info.Length,
+	}, nil
+}
+
+func (l RedisEventLog) Read(ctx context.Context, after string) ([]LoggedEvent, error) {
+	streams, err := l.Client.XRead(ctx, &redis.XReadArgs{
+		Streams: []string{l.Key, after},
+		Count:   eventsReadCount,
+		Block:   eventsReadBlock,
+	}).Result()
+	if errors.Is(err, redis.Nil) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var entries []LoggedEvent
+	for _, stream := range streams {
+		for _, message := range stream.Messages {
+			data, _ := message.Values["data"].(string)
+			entries = append(entries, LoggedEvent{ID: message.ID, Data: data})
+		}
+	}
+	return entries, nil
+}
+
+// ConsumeChat forwards chat to the hub until the context ends. Chat stays on
+// pub/sub: a client that misses a message gets the history when it reconnects.
+// The client resubscribes after losing Redis, and keepalive pings notice that.
+func ConsumeChat(ctx context.Context, client *redis.Client, hub *Hub) {
+	subscription := client.Subscribe(ctx, chatChannel)
 	defer subscription.Close()
 
 	for message := range subscription.Channel(redis.WithChannelSize(1024)) {
-		if message.Channel == chatChannel {
-			var chat ChatMessage
-			if err := json.Unmarshal([]byte(message.Payload), &chat); err == nil {
-				hub.DeliverChat(chat)
-			}
-			continue
+		var chat ChatMessage
+		if err := json.Unmarshal([]byte(message.Payload), &chat); err == nil {
+			hub.DeliverChat(chat)
 		}
-		var event RoomEvent
-		if err := json.Unmarshal([]byte(message.Payload), &event); err != nil {
-			log.Printf("event: %v", err)
-			continue
-		}
-		hub.Deliver(event)
 	}
 }

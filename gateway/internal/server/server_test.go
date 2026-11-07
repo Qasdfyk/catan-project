@@ -19,6 +19,7 @@ type fakeBackend struct {
 	seats   map[string]int
 	actions []string
 	reject  error
+	public  json.RawMessage // the public state sessions return, if set
 }
 
 func (b *fakeBackend) Session(_ context.Context, roomID, token string) (Session, error) {
@@ -28,9 +29,13 @@ func (b *fakeBackend) Session(_ context.Context, roomID, token string) (Session,
 	if !ok {
 		return Session{}, &RejectedError{Status: http.StatusUnauthorized, Message: "bad session"}
 	}
+	public := b.public
+	if public == nil {
+		public = json.RawMessage(`{"version":1}`)
+	}
 	return Session{
 		Seat:    seat,
-		Public:  json.RawMessage(`{"version":1}`),
+		Public:  public,
 		Private: json.RawMessage(`{"seat":` + seatKey(seat) + `}`),
 	}, nil
 }
@@ -582,7 +587,7 @@ func TestMetricsExposeCounters(t *testing.T) {
 	h.metrics.Handler(h.hub).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 
 	body := recorder.Body.String()
-	for _, line := range []string{"catan_gateway_clients 1", "catan_gateway_rooms 1", "catan_gateway_actions_total 1"} {
+	for _, line := range []string{"catan_gateway_clients 1", "catan_gateway_rooms 1", "catan_gateway_actions_total 1", "catan_gateway_resyncs_total 0"} {
 		if !strings.Contains(body, line) {
 			t.Fatalf("missing %q in:\n%s", line, body)
 		}

@@ -1,11 +1,10 @@
 // Bots fills empty seats. Each bot is a goroutine with one WebSocket connection
-// to the gateway, so an idle one costs almost nothing. It also runs the turn
-// timer, which is why only one instance should run.
+// to the gateway, so an idle one costs almost nothing. Seats come from a Redis
+// stream read by a consumer group, so any number of instances can share them.
 package main
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"os"
 	"os/signal"
@@ -17,11 +16,6 @@ import (
 
 	"catan/gateway/internal/bot"
 	"catan/gateway/internal/server"
-)
-
-const (
-	botsChannel   = "catan:bots"
-	activeBotsKey = "catan:active_bots"
 )
 
 func env(name, fallback string) string {
@@ -48,49 +42,22 @@ func main() {
 	}
 	url := env("GATEWAY_URL", "ws://localhost:8080/ws")
 
-	start := func(raw string) {
-		var seat bot.Seat
-		if err := json.Unmarshal([]byte(raw), &seat); err != nil {
-			log.Printf("bot request: %v", err)
-			return
-		}
-		go func() {
-			bot.Play(ctx, url, seat, bot.Options{Delay: time.Duration(delayMs) * time.Millisecond})
-			// Forgotten only when the seat is really over, not on shutdown
-			if ctx.Err() == nil {
-				client.SRem(context.Background(), activeBotsKey, raw)
-			}
-		}()
-	}
-
-	// Subscribing first means no bot is missed between the two steps. One that
-	// shows up in both would only hold a second connection for the same seat.
-	subscription := client.Subscribe(ctx, botsChannel)
-	defer subscription.Close()
-	if _, err := subscription.Receive(ctx); err != nil {
-		log.Fatalf("subscribe: %v", err)
-	}
-
-	waiting, err := client.SMembers(ctx, activeBotsKey).Result()
+	consumer, release, err := consumerName(ctx, client, botsStream)
 	if err != nil {
-		log.Fatalf("active bots: %v", err)
+		log.Fatalf("consumer name: %v", err)
 	}
-	for _, raw := range waiting {
-		start(raw)
-	}
+	defer release()
 
+	// Every instance runs the timer. That is safe because the backend ends a
+	// turn only once its deadline has passed, so a second report changes nothing.
 	backend := server.NewHTTPBackend(env("BACKEND_URL", "http://localhost:8000"), env("INTERNAL_API_KEY", "dev-internal-key"))
 	go runTurnTimer(ctx, time.Second, redisDueRooms(client), backend.Timeout)
 
-	log.Printf("bots ready, resuming %d seats", len(waiting))
-	// The channel stays open after a signal, so the context has to end the loop
-	messages := subscription.Channel()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case message := <-messages:
-			start(message.Payload)
-		}
+	queue := &summons{client: client, stream: botsStream, group: botsGroup, consumer: consumer}
+	seats := newSeats(ctx, queue, func(ctx context.Context, seat bot.Seat) {
+		bot.Play(ctx, url, seat, bot.Options{Delay: time.Duration(delayMs) * time.Millisecond})
+	})
+	if err := seats.run(ctx); err != nil {
+		log.Fatalf("bots: %v", err)
 	}
 }

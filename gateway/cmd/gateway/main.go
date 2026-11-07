@@ -38,13 +38,21 @@ func main() {
 
 	metrics := &server.Metrics{}
 	hub := server.NewHub(server.RedisPresence{Client: redisClient}, metrics)
-	go server.ConsumeEvents(ctx, redisClient, hub)
+	backend := server.NewHTTPBackend(env("BACKEND_URL", "http://localhost:8000"), env("INTERNAL_API_KEY", "dev-internal-key"))
+	events := &server.EventReader{
+		Log:     server.RedisEventLog{Client: redisClient, Key: server.EventsStream},
+		Hub:     hub,
+		Backend: backend,
+		Metrics: metrics,
+	}
+	go events.Run(ctx)
+	go server.ConsumeChat(ctx, redisClient, hub)
 	go hub.RefreshPresence(ctx)
 
 	mux := http.NewServeMux()
 	mux.Handle("/ws", &server.Handler{
 		Hub:            hub,
-		Backend:        server.NewHTTPBackend(env("BACKEND_URL", "http://localhost:8000"), env("INTERNAL_API_KEY", "dev-internal-key")),
+		Backend:        backend,
 		Chat:           server.RedisChat{Client: redisClient},
 		Metrics:        metrics,
 		OriginPatterns: strings.Split(env("ALLOWED_ORIGINS", "localhost:*,127.0.0.1:*"), ","),
