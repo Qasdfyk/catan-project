@@ -120,6 +120,10 @@ starts at thousands of messages per second, with the numbers below from
 
 The trade-offs and known limits are in [docs/design.md](docs/design.md).
 
+Every game can be described by a [game record](docs/game-record.md): one JSON document with the
+board, each action and the outcome of each chance, from which the rules engine replays the game
+exactly. It is the input of the [analysis engine](https://github.com/Qasdfyk/catan-analysis-engine).
+
 ## Tests
 
 ```bash
