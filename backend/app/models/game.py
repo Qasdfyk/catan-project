@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict, Set
+from typing import Any, List, Optional, Dict, Set
 import random
 import uuid
 from dataclasses import dataclass, field
@@ -7,6 +7,7 @@ from enum import Enum
 from app.models.board import Board, ResourceType, PortType
 from app.models.player import DevCard, Player, PlayerColor
 from app.models.hex_lib import Edge, Vertex, Hex
+from app.models.recording import cards_json, corner_json, hex_json, recorded
 from app.models.settings import FRIENDLY_ROBBER_MAX_POINTS, GameSettings
 
 class TurnPhase(str, Enum):
@@ -132,13 +133,27 @@ class GameState:
     # Maps Vertex -> Building object
     settlements: Dict[Vertex, Building] = field(default_factory=dict)
 
+    # --- Not saved with the state ---
+    # Where dice and steals come from; a replay swaps in the recorded outcomes
+    rng: Any = field(default=random, repr=False, compare=False)
+    # Actions accepted since the caller last took them (see recording.py)
+    events: List[Dict[str, Any]] = field(default_factory=list, repr=False, compare=False)
+    _record_depth: int = field(default=0, repr=False, compare=False)
+    _auto: bool = field(default=False, repr=False, compare=False)
+
     @staticmethod
-    def create_new_game(player_names: List[str], settings: Optional[GameSettings] = None) -> 'GameState':
+    def create_new_game(
+        player_names: List[str],
+        settings: Optional[GameSettings] = None,
+        board: Optional[Board] = None,
+        dev_deck: Optional[List[DevCard]] = None,
+    ) -> 'GameState':
+        """A replay passes the recorded board and deck; a new game draws its own."""
         if len(player_names) < 2 or len(player_names) > 4:
             raise ValueError("Game requires 2 to 4 players.")
 
         settings = settings or GameSettings()
-        board = Board.create_standard_game(desert=settings.desert)
+        board = board or Board.create_standard_game(desert=settings.desert)
         players = []
         colors = list(PlayerColor)
 
@@ -154,8 +169,9 @@ class GameState:
         indices = list(range(len(players)))
         setup_queue = indices + indices[::-1]
 
-        dev_deck = list(DEV_DECK)
-        random.shuffle(dev_deck)
+        if dev_deck is None:
+            dev_deck = list(DEV_DECK)
+            random.shuffle(dev_deck)
 
         return GameState(
             board=board,
@@ -168,12 +184,21 @@ class GameState:
             current_turn_index=setup_queue[0]
         )
 
+    def take_events(self) -> List[Dict[str, Any]]:
+        """Returns the actions recorded since the last call and forgets them."""
+        events, self.events = self.events, []
+        return events
+
+    def seat_of(self, player: Player) -> int:
+        return next(seat for seat, p in enumerate(self.players) if p.color == player.color)
+
     def get_current_player(self) -> Player:
         return self.players[self.current_turn_index]
 
     def get_player_by_color(self, color: PlayerColor) -> Player:
         return next(p for p in self.players if p.color == color)
 
+    @recorded("end_turn")
     def end_turn(self, player: Player):
         """A player's request to finish their turn; only legal after rolling."""
         self._verify_turn(player)
@@ -231,8 +256,12 @@ class GameState:
             self._log(f"{player.name} ran out of time.")
 
         turn = self.turn_number
-        while not self.is_game_over and self.turn_number == turn:
-            self._auto_step(rng)
+        self._auto = True
+        try:
+            while not self.is_game_over and self.turn_number == turn:
+                self._auto_step(rng)
+        finally:
+            self._auto = False
 
     def _auto_step(self, rng):
         player = self.get_current_player()
@@ -275,6 +304,7 @@ class GameState:
                 self.cancel_trade(player)
             self.end_turn(player)
 
+    @recorded("roll_dice", outcome=lambda game, player, total: ({"dice": list(game.dice)}, None))
     def roll_dice(self, player: Optional[Player] = None) -> int:
         self._verify_active()
         player = player or self.get_current_player()
@@ -283,8 +313,8 @@ class GameState:
         if self.turn_phase != TurnPhase.ROLL_DICE:
             raise ValueError("Cannot roll dice in this phase.")
 
-        d1 = random.randint(1, 6)
-        d2 = random.randint(1, 6)
+        d1 = self.rng.randint(1, 6)
+        d2 = self.rng.randint(1, 6)
         self.dice_roll = d1 + d2
         self.dice = [d1, d2]
         self.roll_counts[self.dice_roll - DICE_TOTALS.start] += 1
@@ -347,6 +377,7 @@ class GameState:
         for color, amount in shares.items():
             self.get_player_by_color(color).add_resource(resource, min(amount, available))
 
+    @recorded("discard", lambda game, cards: {"cards": cards_json(cards)})
     def discard(self, player: Player, cards: Dict[ResourceType, int]):
         self._verify_active()
         if self.turn_phase != TurnPhase.DISCARD:
@@ -369,6 +400,7 @@ class GameState:
         if not self.pending_discards:
             self.turn_phase = TurnPhase.MOVE_ROBBER
 
+    @recorded("move_robber", lambda game, target_hex: {"hex": hex_json(target_hex)})
     def move_robber(self, player: Player, target_hex: Hex):
         self._verify_turn(player, TurnPhase.MOVE_ROBBER)
         if target_hex == self.robber_hex:
@@ -409,6 +441,12 @@ class GameState:
     def _has_building_on_robber(self, player: Player) -> bool:
         return player.color in self._owners_around(self.robber_hex)
 
+    @recorded(
+        "steal",
+        lambda game, victim: {"victim_seat": game.seat_of(victim)},
+        # Only the thief and the victim learn which card changed hands
+        lambda game, thief, stolen, victim: ({"resource": stolen.value}, sorted([game.seat_of(thief), game.seat_of(victim)])),
+    )
     def steal_resource(self, thief: Player, victim: Player):
         self._verify_turn(thief, TurnPhase.STEAL)
 
@@ -432,7 +470,7 @@ class GameState:
         for res, count in victim.resources.items():
             pool.extend([res] * count)
 
-        stolen_res = random.choice(pool)
+        stolen_res = self.rng.choice(pool)
 
         victim.remove_resource(stolen_res, 1)
         thief.add_resource(stolen_res, 1)
@@ -443,6 +481,7 @@ class GameState:
 
     # --- Building Logic ---
 
+    @recorded("build_road", lambda game, edge, free=False: corner_json(edge))
     def place_road(self, player: Player, edge: Edge, free: bool = False):
         """
         Handles placement of a road.
@@ -505,6 +544,7 @@ class GameState:
         if not self._has_road_connectivity(player, canonical_edge):
              raise ValueError("Road must be connected to your existing network.")
 
+    @recorded("build_settlement", lambda game, vertex, free=False: corner_json(vertex))
     def place_settlement(self, player: Player, vertex: Vertex, free: bool = False):
         """
         Handles placement of a settlement.
@@ -568,6 +608,7 @@ class GameState:
             if not self._has_settlement_connectivity(player, canonical_vertex):
                  raise ValueError("Settlement must be connected to your road.")
 
+    @recorded("upgrade_city", lambda game, vertex: corner_json(vertex))
     def upgrade_to_city(self, player: Player, vertex: Vertex):
         self._verify_turn(player)
         canonical_vertex = vertex.get_canonical()
@@ -609,6 +650,7 @@ class GameState:
             return 3
         return 4
 
+    @recorded("trade_with_bank", lambda game, give, get: {"give": give.value, "get": get.value})
     def trade_with_bank(self, player: Player, give: ResourceType, get: ResourceType):
         self._verify_turn(player)
 
@@ -630,6 +672,7 @@ class GameState:
 
     # --- Trade Between Players ---
 
+    @recorded("offer_trade", lambda game, give, get: {"give": cards_json(give), "get": cards_json(get)})
     def offer_trade(self, player: Player, give: Dict[ResourceType, int], get: Dict[ResourceType, int]):
         self._verify_turn(player)
         if not give or not get:
@@ -646,6 +689,7 @@ class GameState:
         self.trade_offer = TradeOffer(player.color, give, get)
         self._log(f"{player.name} offers a trade.")
 
+    @recorded("respond_trade", lambda game, accept: {"accept": accept})
     def respond_to_trade(self, player: Player, accept: bool):
         self._verify_active()
         offer = self.trade_offer
@@ -661,6 +705,7 @@ class GameState:
                 answers.remove(player.color)
         (offer.accepted if accept else offer.declined).append(player.color)
 
+    @recorded("confirm_trade", lambda game, partner: {"partner_seat": game.seat_of(partner)})
     def confirm_trade(self, player: Player, partner: Player):
         self._verify_turn(player)
         offer = self.trade_offer
@@ -681,6 +726,7 @@ class GameState:
         self.trade_offer = None
         self._log(f"{player.name} traded with {partner.name}.")
 
+    @recorded("cancel_trade")
     def cancel_trade(self, player: Player):
         self._verify_active()
         if self.trade_offer is None or self.trade_offer.proposer != player.color:
@@ -689,6 +735,11 @@ class GameState:
 
     # --- Development Cards ---
 
+    @recorded(
+        "buy_dev_card",
+        # The card stays secret from the others until it is played
+        outcome=lambda game, player, _: ({"card": player.new_dev_cards[-1].value}, [game.seat_of(player)]),
+    )
     def buy_dev_card(self, player: Player):
         self._verify_turn(player)
         if not self.dev_deck:
@@ -718,6 +769,7 @@ class GameState:
         player.dev_cards.remove(card)
         self.dev_card_played = True
 
+    @recorded("play_knight")
     def play_knight(self, player: Player):
         self._spend_dev_card(player, DevCard.KNIGHT)
         player.knights_played += 1
@@ -727,6 +779,7 @@ class GameState:
         self.turn_phase = TurnPhase.MOVE_ROBBER
         self._check_victory()
 
+    @recorded("play_road_building")
     def play_road_building(self, player: Player):
         if not self._free_road_edges(player):
             raise ValueError("You have nowhere to build a road.")
@@ -736,6 +789,7 @@ class GameState:
         self.return_phase = self.turn_phase
         self.turn_phase = TurnPhase.ROAD_BUILDING
 
+    @recorded("play_year_of_plenty", lambda game, first, second: {"first": first.value, "second": second.value})
     def play_year_of_plenty(self, player: Player, first: ResourceType, second: ResourceType):
         wanted = [first, second]
         if any(r not in TRADABLE_RESOURCES for r in wanted):
@@ -748,6 +802,7 @@ class GameState:
             player.add_resource(resource, 1)
         self._log(f"{player.name} played Year of Plenty.")
 
+    @recorded("play_monopoly", lambda game, resource: {"resource": resource.value})
     def play_monopoly(self, player: Player, resource: ResourceType):
         if resource not in TRADABLE_RESOURCES:
             raise ValueError("That resource cannot be taken.")
