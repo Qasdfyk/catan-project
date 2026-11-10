@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { Board, type BoardTargets } from './Board';
 import { Dice } from './Dice';
+import { ResourceIcon } from './Art';
 import { NO_BUILT, type BuiltChanges } from '../utils/changes';
 import type { Building, GameView, HexCoords } from '../types/game';
 
@@ -78,5 +79,22 @@ describe('Dice', () => {
     it('tumbles only right after a roll', () => {
         expect(renderToStaticMarkup(<Dice values={[3, 4]} total={7} rolling />)).toContain('class="dice rolling"');
         expect(renderToStaticMarkup(<Dice values={[3, 4]} total={7} />)).toContain('class="dice"');
+    });
+});
+
+describe('Board art', () => {
+    it('draws the terrain art once and shows it on every tile', () => {
+        const markup = render();
+        expect(markup.match(/id="art-scene-wood"/g)).toHaveLength(1);
+        expect(markup).toContain('href="#art-scene-wood"');
+        expect(markup).toContain('href="#art-scene-ore"');
+        expect(markup).toContain('fill="url(#art-ground-ore)"');
+    });
+
+    it('draws resource icons as decorative unless asked for a label', () => {
+        expect(renderToStaticMarkup(<ResourceIcon resource="wheat" />)).toContain('aria-hidden="true"');
+        const labelled = renderToStaticMarkup(<ResourceIcon resource="ore" size={40} label />);
+        expect(labelled).toContain('aria-label="ore"');
+        expect(labelled).toContain('width="40"');
     });
 });

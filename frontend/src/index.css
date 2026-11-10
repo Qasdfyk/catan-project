@@ -1,19 +1,24 @@
 :root {
-  --bg: #1f4e6b;
-  --surface: #ffffff;
-  --surface-2: #f1efe9;
-  --text: #22262b;
-  --muted: #666d75;
-  --line: #d9d6cd;
-  --accent: #1c6fb8;
+  /* Warm board-game look: paper panels on a wooden table */
+  --bg: #3a2717;
+  --surface: #fdf8ec;
+  --surface-2: #f3e8cf;
+  --text: #2e2418;
+  --muted: #7a6a52;
+  --line: #dcc9a2;
+  --accent: #b5502b;
+  --accent-dark: #8f3c1e;
   --accent-text: #ffffff;
   --danger: #b3261e;
-  --sea: #2c7fa8;
+  --sea: #2f7fa3;
   --highlight: #e6b93a;
   --glow: #fff2a8;
   --recent: #ffffff;
   --robber-mark: rgba(30, 30, 30, .7);
-  --gain: #2ea043;
+  --gain: #2e8540;
+  --wood: #7b4f2c;
+  --wood-dark: #553520;
+  --shadow: 0 1px 2px rgba(60, 40, 15, .12), 0 4px 12px rgba(60, 40, 15, .08);
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color: var(--text);
 }
@@ -24,36 +29,43 @@ html, body, #root { height: 100%; margin: 0; }
 
 body { background: var(--bg); }
 
-h1 { margin: 0; font-size: 26px; }
-h2 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+h1 { margin: 0; font-size: 26px; font-family: Georgia, 'Times New Roman', serif; }
+h2 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 
 button, input, select { font: inherit; }
 
+/* Buttons are chunky tiles with a bottom edge that sinks when pressed */
 button {
   padding: 8px 12px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--surface);
   color: var(--text);
+  box-shadow: 0 2px 0 var(--line);
   cursor: pointer;
+  transition: background .12s, transform .06s, box-shadow .06s;
 }
 button:hover:not(:disabled) { background: var(--surface-2); }
-button:disabled { opacity: .5; cursor: not-allowed; }
-button[aria-pressed='true'] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
-button[aria-pressed='true']:hover:not(:disabled) { background: #175d9b; }
+button:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 0 0 var(--line); }
+button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+button:focus-visible { outline: 3px solid var(--highlight); outline-offset: 1px; }
+button[aria-pressed='true'] { background: var(--accent); border-color: var(--accent-dark); color: var(--accent-text); box-shadow: 0 2px 0 var(--accent-dark); }
+button[aria-pressed='true']:hover:not(:disabled) { background: var(--accent-dark); }
 
-button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
-button.primary:hover:not(:disabled) { background: #175d9b; }
+button.primary { background: var(--accent); border-color: var(--accent-dark); color: var(--accent-text); font-weight: 600; box-shadow: 0 3px 0 var(--accent-dark); }
+button.primary:hover:not(:disabled) { background: #a2471f; }
+button.primary:active:not(:disabled) { box-shadow: 0 0 0 var(--accent-dark); transform: translateY(3px); }
 button.big { width: 100%; padding: 12px; font-size: 16px; }
 
 input, select {
   width: 100%;
   padding: 8px;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface);
+  border-radius: 8px;
+  background: #fffdf7;
   color: var(--text);
 }
+input:focus-visible, select:focus-visible { outline: 3px solid var(--highlight); outline-offset: 0; }
 
 label { display: grid; gap: 4px; font-size: 14px; }
 
@@ -111,11 +123,12 @@ label.check input { width: auto; margin: 0; flex: none; }
   gap: 16px;
   padding: 8px 16px;
   background: var(--surface);
-  border-bottom: 1px solid var(--line);
+  --topbar-border: 3px;
+  border-bottom: var(--topbar-border) solid var(--wood);
   /* Tall enough for the dice (30px) whether they are shown or not. The board takes
      what the bars leave, so a bar that grows when the dice appear would resize the
-     board at every roll. */
-  min-height: calc(30px + 2 * 8px + 1px);
+     board at every roll. With box-sizing: border-box the height counts the border. */
+  min-height: calc(30px + 2 * 8px + var(--topbar-border));
 }
 /* Whose turn it is, what to do now and the time left, read together. */
 .turn-status { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
@@ -144,7 +157,6 @@ label.check input { width: auto; margin: 0; flex: none; }
 .board-area { grid-area: board; min-height: 0; min-width: 0; background: var(--sea); padding: 4px; }
 .board { display: block; width: 100%; height: 100%; }
 
-.tile { stroke: #f4ead0; stroke-width: 3; }
 
 .token circle { fill: #fbf6e7; stroke: #6d5f43; stroke-width: 1; }
 .token text { font-size: 18px; font-weight: 700; text-anchor: middle; dominant-baseline: central; fill: #2b2b2b; }
@@ -178,17 +190,17 @@ label.check input { width: auto; margin: 0; flex: none; }
   gap: 10px;
   padding: 10px;
   overflow-y: auto;
-  background: var(--surface-2);
-  border-left: 1px solid var(--line);
+  background: #efe2c4;
+  border-left: 3px solid var(--wood);
 }
 
-.panel { padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.panel { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); }
 .panel.notice { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 
 .rules { margin: -4px 0 6px; font-size: 12px; }
 
 .player { display: flex; align-items: center; gap: 6px; padding: 5px 6px; border-radius: 6px; font-size: 14px; }
-.player.active { background: #dcebf8; }
+.player.active { background: #fff1c2; box-shadow: inset 3px 0 0 var(--highlight); }
 .player-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .player-stats { display: flex; gap: 8px; white-space: nowrap; }
 .swatch { width: 14px; height: 14px; border-radius: 3px; border: 1px solid #333; flex: none; }
@@ -215,20 +227,33 @@ label.check input { width: auto; margin: 0; flex: none; }
 .log-timeout .log-icon, .log-bank .log-icon, .log-robber .log-icon { color: var(--danger); }
 .log-longest_road .log-icon, .log-largest_army .log-icon, .log-win .log-icon { color: var(--highlight); }
 
-.handbar { grid-area: hand; padding: 8px 12px; background: var(--surface); border-top: 1px solid var(--line); }
+.handbar {
+  grid-area: hand;
+  padding: 10px 12px;
+  border-top: 3px solid var(--wood-dark);
+  background:
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, .06) 0 2px, transparent 2px 11px),
+    linear-gradient(#8a5a33, var(--wood));
+}
 .hand { display: flex; justify-content: center; gap: 8px; }
+/* A resource card: picture on top, how many below */
 .card-pile {
   display: grid;
   justify-items: center;
-  width: 70px;
-  padding: 4px;
-  border: 1px solid var(--line);
-  border-top-width: 6px;
-  border-radius: 6px;
-  background: var(--surface-2);
+  align-content: start;
+  gap: 2px;
+  width: 66px;
+  padding: 0 0 4px;
+  overflow: visible;
+  border: 2px solid #fffaf0;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, .25), 0 4px 10px rgba(0, 0, 0, .25);
 }
-.card-pile strong { font-size: 20px; }
-.card-pile span { font-size: 12px; color: var(--muted); }
+.card-art { display: grid; place-items: center; width: 100%; height: 40px; border-radius: 6px 6px 0 0; box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .15); }
+.card-pile strong { font-size: 20px; line-height: 1.1; }
+.card-pile span { font-size: 11px; color: var(--muted); }
+.card-pile.empty { opacity: .55; }
 
 @media (max-width: 860px) {
   .game {
@@ -243,7 +268,9 @@ label.check input { width: auto; margin: 0; flex: none; }
   .card-pile { width: 60px; }
 }
 
-button.link { margin-left: 8px; padding: 0 4px; border: 0; background: none; color: var(--accent); text-decoration: underline; }
+button.link { margin-left: 8px; padding: 0 4px; border: 0; background: none; box-shadow: none; color: var(--accent); text-decoration: underline; }
+button.link:hover:not(:disabled) { background: none; color: var(--accent-dark); }
+button.link:active:not(:disabled) { transform: none; }
 button.full { width: 100%; margin-top: 8px; }
 
 .dev-cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
@@ -273,9 +300,14 @@ button.full { width: 100%; margin-top: 8px; }
 .roll-stats .hint { margin: 0; font-size: 11px; }
 
 /* --- Look of the game --- */
-body { background: linear-gradient(160deg, #173f5c, #245f80); }
+/* A wooden table: a warm glow in the middle and a faint grain */
+body {
+  background:
+    repeating-linear-gradient(92deg, rgba(0, 0, 0, .05) 0 2px, transparent 2px 9px),
+    radial-gradient(ellipse at 50% 30%, #6e4727, var(--bg) 75%);
+}
 
-.card { box-shadow: 0 12px 40px rgba(0, 0, 0, .3); }
+.card { box-shadow: 0 12px 40px rgba(0, 0, 0, .35); border: 1px solid var(--line); }
 a.button { display: inline-block; padding: 8px 12px; border-radius: 6px; text-align: center; text-decoration: none; }
 a.button.primary { flex: 1; background: var(--accent); color: var(--accent-text); font-weight: 600; }
 a.button:not(.primary) { flex: 1; border: 1px solid var(--line); background: var(--surface); color: var(--text); }
@@ -296,13 +328,6 @@ a.button:not(.primary):hover { background: var(--surface-2); }
 .recent-road { stroke-width: 19; }
 @keyframes recent-pulse { 50% { opacity: .6; } }
 
-.scenery { pointer-events: none; opacity: .42; }
-.scenery-wood path { fill: #123f27; }
-.scenery-brick path { fill: #7d3518; stroke: #e7a884; stroke-width: 1; }
-.scenery-sheep ellipse { fill: #f7f7ee; }
-.scenery-wheat path { fill: none; stroke: #8a6410; stroke-width: 2; stroke-linecap: round; }
-.scenery-ore path { fill: #4a525c; }
-.scenery-desert circle { fill: #b99b5e; }
 
 .piece, .road { animation: pop-in .22s ease-out; transform-box: fill-box; transform-origin: center; }
 @keyframes pop-in { from { opacity: .2; transform: scale(.6); } to { opacity: 1; transform: scale(1); } }
@@ -311,7 +336,8 @@ a.button:not(.primary):hover { background: var(--surface-2); }
 @keyframes pulse { 50% { stroke-opacity: .45; } }
 
 .topbar { transition: background .25s, box-shadow .25s; }
-.my-turn .topbar { background: #fff4c7; box-shadow: inset 0 -3px 0 #e6b93a; }
+.topbar > strong { font-family: Georgia, 'Times New Roman', serif; font-size: 19px; letter-spacing: .02em; color: var(--wood-dark); }
+.my-turn .topbar { background: #fff1c2; box-shadow: inset 0 -3px 0 var(--highlight); }
 
 .dice { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 16px; }
 .die { width: 30px; height: 30px; }
@@ -332,8 +358,12 @@ a.button:not(.primary):hover { background: var(--surface-2); }
 .player-stats { flex-wrap: wrap; gap: 2px 8px; font-size: 12px; color: var(--muted); white-space: normal; }
 .points { white-space: nowrap; }
 
-.handbar { display: flex; align-items: center; justify-content: center; gap: 16px; }
-.handbar button.big { width: auto; min-width: 130px; }
+/* Three columns: what the roll brought, the cards, the turn buttons. The cards keep
+   their place whatever appears beside them. */
+.handbar { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 16px; }
+.hand-side { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.hand-side.left { justify-content: flex-end; }
+.handbar button.big { width: auto; min-width: 140px; }
 .card-pile { position: relative; }
 .change { position: absolute; top: -12px; right: -6px; padding: 0 6px; border-radius: 10px; font-style: normal; font-weight: 700; font-size: 13px; color: #fff; animation: float-up .3s ease-out; }
 .change.gain { background: var(--gain); }
@@ -342,7 +372,7 @@ a.button:not(.primary):hover { background: var(--surface-2); }
 
 /* What the last roll brought; it shows as long as the roll feedback (2.6 s) and fades out */
 .roll-gains { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; animation: gain-fade 2.6s ease-out both; }
-.roll-gain { padding: 1px 8px; border: 2px solid var(--line); border-radius: 10px; background: var(--surface); font-size: 13px; font-weight: 700; color: var(--gain); white-space: nowrap; }
+.roll-gain { padding: 2px 10px; border: 2px solid var(--line); border-radius: 12px; background: var(--surface); font-size: 13px; font-weight: 700; color: var(--gain); white-space: nowrap; box-shadow: 0 2px 6px rgba(0, 0, 0, .25); }
 .gain-badge { display: inline-block; margin-left: 4px; padding: 0 5px; border-radius: 8px; background: var(--gain); color: #fff; font-weight: 700; animation: gain-fade 2.6s ease-out both; }
 @keyframes gain-fade {
   0% { opacity: 0; transform: translateY(4px); }
@@ -362,7 +392,40 @@ a.button:not(.primary):hover { background: var(--surface-2); }
 }
 
 @media (max-width: 860px) {
-  .handbar { flex-wrap: wrap; position: sticky; bottom: 0; z-index: 5; }
+  .handbar { grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 8px; position: sticky; bottom: 0; z-index: 5; }
+  .hand-side.left:empty { display: none; }
 }
 
 .swatch.small { display: inline-block; width: 9px; height: 9px; margin-right: 4px; }
+
+/* --- Side panel: players and actions on top, log, chat and dice in tabs below --- */
+.side-tabs { flex: 1; min-height: 220px; display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.tab-list { display: flex; gap: 2px; padding: 6px 6px 0; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+.tab {
+  position: relative;
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+.tab:hover:not(:disabled) { background: rgba(255, 255, 255, .5); }
+.tab:active:not(:disabled) { transform: none; }
+.tab[aria-selected='true'] { margin-bottom: -1px; border-color: var(--line); background: var(--surface); color: var(--text); }
+.tab-badge { margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 11px; }
+.tab-panel { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 12px; }
+.tab-panel > .panel { padding: 0; border: 0; box-shadow: none; background: none; }
+.tab-panel > .panel > h2 { display: none; }
+.tab-panel > .log { min-height: 0; overflow: visible; }
+.tab-panel > .chat ol { max-height: none; }
+.roll-summary { margin: 0; }
+
+@media (max-width: 860px) {
+  .side-tabs { flex: none; }
+  .tab-panel { max-height: 260px; }
+}

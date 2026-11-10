@@ -13,6 +13,7 @@ import { PlayerTradePanel, TradeOfferPanel } from './PlayerTrade';
 import { ResourceCards } from './ResourceCards';
 import { CardGainBadge, RollGains } from './RollGains';
 import { RollStats } from './RollStats';
+import { SideTabs } from './SideTabs';
 import { TradePanel } from './TradePanel';
 import { TurnTimer } from './TurnTimer';
 import { WinnerDialog } from './WinnerDialog';
@@ -57,6 +58,14 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
     const [buildMode, setBuildMode] = useState<BuildMode>(null);
     const [winnerClosed, setWinnerClosed] = useState(false);
     const changes = useChanges(state, mine.resources);
+    // Chat messages that arrived while the chat tab was closed
+    const [shownTab, setShownTab] = useState('log');
+    const [chatSeen, setChatSeen] = useState(0);
+    const unreadChat = shownTab === 'chat' ? 0 : Math.max(0, room.chat.length - chatSeen);
+    const openTab = (id: string) => {
+        if (id === 'chat' || shownTab === 'chat') setChatSeen(room.chat.length);
+        setShownTab(id);
+    };
 
     const legal = mine.legal ?? EMPTY_LEGAL;
     const isMyTurn = game.current_seat === mine.seat && !game.is_game_over;
@@ -286,28 +295,44 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
                     send={send}
                 />
 
-                <ChatPanel messages={room.chat} players={players} onSend={room.sendChat} />
-
-                <RollStats counts={game.roll_counts} last={game.dice_roll} />
-
-                <GameLog log={game.log} players={players} />
+                <SideTabs
+                    onOpen={openTab}
+                    tabs={[
+                        { id: 'log', label: 'Log', content: <GameLog log={game.log} players={players} /> },
+                        {
+                            id: 'chat',
+                            label: 'Chat',
+                            badge: unreadChat,
+                            content: <ChatPanel messages={room.chat} players={players} onSend={room.sendChat} />,
+                        },
+                        {
+                            id: 'rolls',
+                            label: 'Dice',
+                            content: <RollStats counts={game.roll_counts} last={game.dice_roll} inTab />,
+                        },
+                    ]}
+                />
             </aside>
 
             <footer className="handbar">
+                <div className="hand-side left">
+                    {changes.roll && <RollGains key={changes.rollCount} gains={changes.roll.ownGains} />}
+                </div>
                 <ResourceCards resources={mine.resources} />
-                {changes.roll && <RollGains key={changes.rollCount} gains={changes.roll.ownGains} />}
-                {canRoll && (
-                    <button className="primary big" title="Shortcut: R" onClick={() => send('roll_dice')}>
-                        Roll dice
-                    </button>
-                )}
-                {canEndTurn && (
-                    <button
-                        className="primary big"
-                        title="Shortcut: E"
-                        onClick={() => { setBuildMode(null); send('end_turn'); }}
-                    >End turn</button>
-                )}
+                <div className="hand-side">
+                    {canRoll && (
+                        <button className="primary big" title="Shortcut: R" onClick={() => send('roll_dice')}>
+                            Roll dice
+                        </button>
+                    )}
+                    {canEndTurn && (
+                        <button
+                            className="primary big"
+                            title="Shortcut: E"
+                            onClick={() => { setBuildMode(null); send('end_turn'); }}
+                        >End turn</button>
+                    )}
+                </div>
             </footer>
         </div>
     );

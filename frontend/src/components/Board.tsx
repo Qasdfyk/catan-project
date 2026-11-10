@@ -1,4 +1,6 @@
-import type { BoardTile, GameView, HexCoords, Player, PlayerColor, Port, Position, TileResource } from '../types/game';
+import { memo } from 'react';
+import type { BoardTile, GameView, HexCoords, Player, PlayerColor, Port, Position, Resource, TileResource } from '../types/game';
+import { ArtDefs, ResourceIconArt, TileArt } from './Art';
 import { hexKey, type BuiltChanges } from '../utils/changes';
 import {
     getEdgeEndpoints,
@@ -44,56 +46,66 @@ const positionKey = (kind: string, { hex, direction }: Position) =>
 const positionLabel = (kind: string, { hex, direction }: Position) =>
     `${kind} ${hex.q},${hex.r},${direction}`;
 
-// Scenery around the number token, kept to simple shapes in tile coordinates.
-const SCENERY_SPOTS = [[-30, -30], [28, -32], [-34, 22], [32, 24], [0, 40], [0, -42]];
+interface TileProps {
+    q: number;
+    r: number;
+    s: number;
+    resource: TileResource;
+    number: number | null;
+    rolled: boolean;
+}
 
-const TileScenery = ({ resource }: { resource: TileResource }) => (
-    <g className={`scenery scenery-${resource}`}>
-        {SCENERY_SPOTS.map(([x, y]) => {
-            const key = `${x}-${y}`;
-            switch (resource) {
-                case 'wood':
-                    return <path key={key} d={`M ${x} ${y - 11} l 8 15 h -5 v 5 h -6 v -5 h -5 z`} />;
-                case 'brick':
-                    return <path key={key} d={`M ${x - 9} ${y - 4} h 18 v 8 h -18 z M ${x - 9} ${y} h 18 M ${x} ${y - 4} v 4`} />;
-                case 'sheep':
-                    return <ellipse key={key} cx={x} cy={y} rx={8} ry={5.5} />;
-                case 'wheat':
-                    return <path key={key} d={`M ${x} ${y + 10} V ${y - 10} M ${x} ${y - 7} l -5 -3 M ${x} ${y - 7} l 5 -3 M ${x} ${y - 1} l -5 -3 M ${x} ${y - 1} l 5 -3`} />;
-                case 'ore':
-                    return <path key={key} d={`M ${x - 12} ${y + 8} L ${x - 3} ${y - 9} L ${x + 2} ${y - 1} L ${x + 5} ${y - 5} L ${x + 12} ${y + 8} Z`} />;
-                default:
-                    return <circle key={key} cx={x} cy={y} r={2.5} />;
-            }
-        })}
-    </g>
-);
-
-const Tile = ({ tile, rolled }: { tile: BoardTile; rolled: boolean }) => {
-    const center = hexToPixel(tile.hex);
-    const hot = tile.number === 6 || tile.number === 8;
+// Props are plain values, so a tile re-renders only when it really changes.
+const Tile = memo(({ q, r, s, resource, number, rolled }: TileProps) => {
+    const hex = { q, r, s };
+    const center = hexToPixel(hex);
+    const hot = number === 6 || number === 8;
+    const radius = HEX_SIZE * 0.33;
     return (
-        <g data-tile={hexKey(tile.hex)}>
+        <g data-tile={hexKey(hex)}>
             <polygon
                 className={rolled ? 'tile rolled' : 'tile'}
-                points={points(hexCorners(tile.hex))}
-                fill={RESOURCE_COLORS[tile.resource]}
+                points={points(hexCorners(hex))}
+                fill={`url(#art-ground-${resource})`}
             />
-            <g transform={`translate(${center.x} ${center.y})`}>
-                <TileScenery resource={tile.resource} />
-            </g>
-            {tile.number !== null && (
+            <TileArt resource={resource} x={center.x} y={center.y} rolled={rolled} />
+            {number !== null && (
                 <g className={hot ? 'token hot' : 'token'}>
-                    <circle cx={center.x} cy={center.y} r={HEX_SIZE * 0.33} />
-                    <text x={center.x} y={center.y - 3}>{tile.number}</text>
+                    <circle className="token-shadow" cx={center.x + 1.2} cy={center.y + 2.4} r={radius} />
+                    <circle className="token-disc" cx={center.x} cy={center.y} r={radius} />
+                    <circle className="token-ring" cx={center.x} cy={center.y} r={radius - 3.5} />
+                    <text x={center.x} y={center.y - 3}>{number}</text>
                     <text className="pips" x={center.x} y={center.y + 11}>
-                        {'•'.repeat(numberPips(tile.number))}
+                        {'•'.repeat(numberPips(number))}
                     </text>
                 </g>
             )}
         </g>
     );
-};
+});
+
+/** Sand and shallow water around the island: each tile's hex, grown, under all tiles. */
+const Coast = memo(({ layout }: { layout: string }) => {
+    const hexes = layout.split('|').map((key) => {
+        const [q, r] = key.split(',').map(Number);
+        return { q, r, s: -q - r };
+    });
+    const grown = (hex: HexCoords, scale: number) => {
+        const center = hexToPixel(hex);
+        return points(hexCorners(hex).map(({ x, y }) => ({
+            x: center.x + (x - center.x) * scale,
+            y: center.y + (y - center.y) * scale,
+        })));
+    };
+    return (
+        <g className="coast" aria-hidden="true">
+            <g opacity={0.45}>
+                {hexes.map((hex) => <polygon key={hexKey(hex)} className="coast-shallow" points={grown(hex, 1.12)} />)}
+            </g>
+            {hexes.map((hex) => <polygon key={hexKey(hex)} className="coast-sand" points={grown(hex, 1.09)} />)}
+        </g>
+    );
+});
 
 const PortMark = ({ port }: { port: Port }) => {
     const [first, second] = port.vertices.map(getVertexCoords);
@@ -104,18 +116,39 @@ const PortMark = ({ port }: { port: Port }) => {
     const generic = port.type === '3:1';
     const resource = port.type.split('_')[0] as keyof typeof RESOURCE_COLORS;
 
+    const radius = HEX_SIZE * 0.34;
+    const icon = radius * 1.15;
+
     return (
         <g className="port" data-port={port.type}>
             <title>{generic ? 'Any resource 3:1' : `${resource} 2:1`}</title>
             <line x1={anchor.x} y1={anchor.y} x2={first.x} y2={first.y} />
             <line x1={anchor.x} y1={anchor.y} x2={second.x} y2={second.y} />
+            <circle className="port-shadow" cx={anchor.x + 1.2} cy={anchor.y + 2.4} r={radius} />
             <circle
+                className="port-disc"
                 cx={anchor.x}
                 cy={anchor.y}
-                r={HEX_SIZE * 0.3}
-                fill={generic ? '#ffffff' : RESOURCE_COLORS[resource]}
+                r={radius}
+                style={{ stroke: generic ? '#8a7a5c' : RESOURCE_COLORS[resource] }}
             />
-            <text x={anchor.x} y={anchor.y}>{generic ? '3:1' : '2:1'}</text>
+            {generic ? (
+                <text className="port-generic" x={anchor.x} y={anchor.y}>3:1</text>
+            ) : (
+                <>
+                    <svg
+                        x={anchor.x - icon / 2}
+                        y={anchor.y - radius + 2}
+                        width={icon}
+                        height={icon}
+                        viewBox="0 0 32 32"
+                        aria-hidden="true"
+                    >
+                        <ResourceIconArt resource={resource as Resource} />
+                    </svg>
+                    <text className="port-ratio" x={anchor.x} y={anchor.y + radius * 0.58}>2:1</text>
+                </>
+            )}
         </g>
     );
 };
@@ -222,10 +255,17 @@ export const Board = ({
 
     return (
         <svg className="board" viewBox={VIEW_BOX} role="img" aria-label="Game board">
+            <ArtDefs />
+            <Coast layout={game.board_tiles.map((tile) => hexKey(tile.hex)).join('|')} />
+
             {game.board_tiles.map((tile) => (
                 <Tile
                     key={`${tile.hex.q}-${tile.hex.r}`}
-                    tile={tile}
+                    q={tile.hex.q}
+                    r={tile.hex.r}
+                    s={tile.hex.s}
+                    resource={tile.resource}
+                    number={tile.number}
                     rolled={isRolled(tile)}
                 />
             ))}

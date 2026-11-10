@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { RESOURCES, type Cards, type PrivateState } from '../types/game';
 import { RESOURCE_COLORS } from '../utils/hexLayout';
+import { ResourceIcon } from './Art';
 import { RESOURCE_LABELS } from '../utils/labels';
 
 const CHANGE_VISIBLE_MS = 1800;
@@ -30,7 +31,10 @@ export const ResourceCards = ({ resources }: { resources: PrivateState['resource
             {RESOURCES.map((resource) => {
                 const change = changes[resource];
                 return (
-                    <div key={resource} className="card-pile" style={{ borderTopColor: RESOURCE_COLORS[resource] }}>
+                    <div key={resource} className={(resources[resource] ?? 0) > 0 ? 'card-pile' : 'card-pile empty'}>
+                        <span className="card-art" style={{ background: RESOURCE_COLORS[resource] }}>
+                            <ResourceIcon resource={resource} size={32} />
+                        </span>
                         <strong data-resource={resource}>{resources[resource] ?? 0}</strong>
                         <span>{RESOURCE_LABELS[resource]}</span>
                         {change !== undefined && (
