@@ -23,8 +23,9 @@ cd backend
   the state can never disagree: a refused action changes neither, and a crash between the two
   writes is impossible. When the game ends, the record is closed and moved to
   `RECORDS_DIR/{room}.json.gz` (`backend/records/` locally, the `records` volume in Docker).
-  Seats with a bot at the start are marked `"kind": "bot"`. A failed write is logged and
-  retried on the next change of the room; the game ends either way.
+  Seats with a bot at the start are marked `"kind": "bot"`. A failed write is logged and the
+  game ends either way; the record stays in Redis and the next rematch or download tries again.
+  A download serves it from Redis even while the disk still refuses it.
 - **Download.** `GET /api/rooms/{room}/record` returns the record of a finished game as
   `catan-{room}.json`; the game-over dialog links to it. While the game runs the answer is
   409, since the record shows every hand. The file outlives the room, which Redis drops after
