@@ -9,6 +9,8 @@ venv/
 .venv/
 .env
 .pytest_cache/
+# Finished games saved by a local backend
+backend/records/
 backend/code_tool.py
 frontend/code_dump.py
 

@@ -2,15 +2,20 @@
 Rooms: the lobby, seats and their session tokens, and the single path through
 which a game state changes (load, validate, save, publish) under a room lock.
 """
+import asyncio
+import logging
 import secrets
 import time
 import uuid
 from typing import Any, Dict, Optional
 
+from app.core.config import settings as config
 from app.models.game import GameState
 from app.models.settings import GameSettings
 from app.schemas.game_schemas import BOT_LEVELS, DEFAULT_BOT_LEVEL, RoomSession, SettingsUpdate
 from app.services.actions import apply_action
+from app.services.game_record import close_record, new_record
+from app.services.record_store import RecordStore
 from app.services.redis_service import RedisService
 from app.services.serializer import GameSerializer
 from app.services.views import private_view, public_view
@@ -18,6 +23,8 @@ from app.services.views import private_view, public_view
 MAX_SEATS = 4
 MIN_SEATS_TO_START = 2
 BOT_NAMES = ("Ada", "Boole", "Turing", "Lovelace")
+
+log = logging.getLogger(__name__)
 
 
 class RoomError(Exception):
@@ -48,8 +55,9 @@ class InvalidSession(RoomError):
 
 
 class RoomService:
-    def __init__(self, redis: RedisService):
+    def __init__(self, redis: RedisService, records: Optional[RecordStore] = None):
         self.redis = redis
+        self.records = records or RecordStore(config.RECORDS_DIR)
         # Replaced in tests to move time forward
         self.clock = time.time
 
@@ -126,6 +134,7 @@ class RoomService:
 
             if action_type == "start_game":
                 game = self._start_game(room, seat)
+                await self.redis.start_record(room_id, self._new_record(room, game))
                 # Saved before the bots connect, which is why _commit comes first
                 await self._commit(room, game)
                 await self._summon_bots(room)
@@ -156,6 +165,19 @@ class RoomService:
                     room["status"] = "finished"
 
             await self._commit(room, game)
+
+    async def get_record(self, room_id: str) -> Dict[str, Any]:
+        """The record of a finished game. It outlives the room, which Redis drops after a day."""
+        try:
+            record = await asyncio.to_thread(self.records.load, room_id)
+        except ValueError:
+            raise RoomNotFound() from None
+        if record is not None:
+            return record
+        room = await self._load_room(room_id)
+        if room["status"] != "finished":
+            raise RoomConflict("The game is not over yet.")
+        raise RoomNotFound()
 
     async def join_rematch(self, room_id: str, token: str) -> RoomSession:
         """Trades a session of a finished game for the same seat in its rematch."""
@@ -326,9 +348,41 @@ class RoomService:
         room["version"] += 1
         await self._update_turn_deadline(room, game)
         if game is not None:
-            await self.redis.save_game_state(room["room_id"], GameSerializer.game_to_dict(game))
+            await self.redis.save_game_state(
+                room["room_id"], GameSerializer.game_to_dict(game), events=game.take_events()
+            )
+            if game.is_game_over and not room.get("record_saved"):
+                room["record_saved"] = await self._save_record(room, game)
         await self._store(room)
         await self.redis.publish_event(self._event(room, game))
+
+    @staticmethod
+    def _new_record(room: Dict[str, Any], game: GameState) -> Dict[str, Any]:
+        players = [
+            {"kind": "bot", "bot_level": entry.get("level", DEFAULT_BOT_LEVEL)} if entry.get("bot") else {}
+            for entry in room["seats"]
+        ]
+        return new_record(game, source="platform", players=players, game_id=room["room_id"])
+
+    async def _save_record(self, room: Dict[str, Any], game: GameState) -> bool:
+        """
+        Moves the record of a finished game from Redis to disk. A failure is
+        logged and leaves the record in Redis, so the next change of the room
+        (a rematch, say) tries again; the game itself must end either way.
+        """
+        room_id = room["room_id"]
+        record = await self.redis.load_record(room_id)
+        if record is None:
+            log.warning("Room %s finished without a record; it started before records existed.", room_id)
+            return False
+        close_record(record, game)
+        try:
+            await asyncio.to_thread(self.records.save, room_id, record)
+        except OSError:
+            log.exception("Could not save the record of room %s.", room_id)
+            return False
+        await self.redis.drop_record(room_id)
+        return True
 
     async def _update_turn_deadline(self, room: Dict[str, Any], game: Optional[GameState]):
         """Every step of a turn (rolling, discarding, moving the robber...) gets the full time."""

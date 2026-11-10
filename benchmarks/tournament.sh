@@ -37,7 +37,8 @@ redis-server --port 6380 --save '' --appendonly no > /dev/null 2>&1 &
 pids+=($!)
 until redis-cli -p 6380 ping > /dev/null 2>&1; do sleep 0.1; done
 
-(cd "$root/backend" && exec "$venv/uvicorn" app.main:app --port 8100 --workers "${BACKEND_WORKERS:-4}" --log-level critical) &
+# The tournament keeps its own copies with -records; these would only pile up
+(cd "$root/backend" && RECORDS_DIR="$work/records" exec "$venv/uvicorn" app.main:app --port 8100 --workers "${BACKEND_WORKERS:-4}" --log-level critical) &
 pids+=($!)
 until curl -fs --noproxy '*' -m 1 -o /dev/null http://localhost:8100/health; do sleep 0.2; done
 

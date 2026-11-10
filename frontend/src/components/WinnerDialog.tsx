@@ -13,12 +13,14 @@ interface WinnerDialogProps {
     rematchError: string;
     /** The last action the server refused, while it is on screen. */
     actionError: string | null;
+    /** The whole game as a file, for the analyzer or for later. */
+    recordUrl: string;
     onRematch: () => void;
     onClose: () => void;
 }
 
 export const WinnerDialog = ({
-    winner, players, isHost, rematchStarted, rematchError, actionError, onRematch, onClose,
+    winner, players, isHost, rematchStarted, rematchError, actionError, recordUrl, onRematch, onClose,
 }: WinnerDialogProps) => {
     // The error on screen when the host asked; undefined until they do
     const [errorWhenRequested, setErrorWhenRequested] = useState<string | null | undefined>(undefined);
@@ -54,6 +56,7 @@ export const WinnerDialog = ({
                 )}
                 <div className="button-row">
                     <button onClick={onClose}>See the board</button>
+                    <a className="button" href={recordUrl} download>Download game</a>
                     {isHost ? (
                         <>
                             <Link className="button" to="/">New game</Link>

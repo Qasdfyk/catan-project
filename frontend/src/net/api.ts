@@ -36,3 +36,6 @@ export const joinRematch = (roomId: string, token: string) =>
         method: 'POST',
         body: JSON.stringify({ token }),
     });
+
+/** The record of a finished game (docs/game-record.md), served as a download. */
+export const recordUrl = (roomId: string) => `/api/rooms/${encodeURIComponent(roomId)}/record`;
