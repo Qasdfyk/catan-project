@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { recordUrl } from '../net/api';
 import type { RoomConnection } from '../net/useRoom';
 import type { GameView, LegalMoves, Player, Position, PrivateState, PublicState } from '../types/game';
 import { Board, type BoardTargets } from './Board';
@@ -125,6 +126,7 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
                     rematchStarted={state.rematch_room_id !== null}
                     rematchError={rematchError}
                     actionError={room.error}
+                    recordUrl={recordUrl(state.room_id)}
                     onRematch={() => send('rematch')}
                     onClose={() => setWinnerClosed(true)}
                 />

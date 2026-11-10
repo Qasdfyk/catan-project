@@ -14,9 +14,41 @@ class RedisService:
     def __init__(self):
         self.redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
 
-    async def save_game_state(self, room_id: str, game_data: dict, ttl: int = ROOM_TTL_SECONDS):
-        key = f"game:{room_id}"
-        await self.redis.set(key, json.dumps(game_data), ex=ttl)
+    async def save_game_state(
+        self, room_id: str, game_data: dict, events: list[dict] | None = None, ttl: int = ROOM_TTL_SECONDS
+    ):
+        """
+        Saves the state together with the record events of the actions that led
+        to it, in one transaction: a crash between the two would leave a record
+        that no longer replays to the stored state.
+        """
+        transaction = self.redis.pipeline(transaction=True)
+        transaction.set(f"game:{room_id}", json.dumps(game_data), ex=ttl)
+        if events:
+            transaction.rpush(f"record:{room_id}:events", *(json.dumps(event) for event in events))
+        # Rooms that were never recorded have no header; EXPIRE skips missing keys
+        transaction.expire(f"record:{room_id}", ttl)
+        transaction.expire(f"record:{room_id}:events", ttl)
+        await transaction.execute()
+
+    async def start_record(self, room_id: str, header: dict, ttl: int = ROOM_TTL_SECONDS):
+        """Stores the record header of a game that just started. Its events follow with every save."""
+        transaction = self.redis.pipeline(transaction=True)
+        transaction.set(f"record:{room_id}", json.dumps(header), ex=ttl)
+        transaction.delete(f"record:{room_id}:events")
+        await transaction.execute()
+
+    async def load_record(self, room_id: str) -> dict | None:
+        """The record of a running game: its header with all events so far."""
+        header = await self.redis.get(f"record:{room_id}")
+        if header is None:
+            return None
+        record = json.loads(header)
+        record["events"] = [json.loads(event) for event in await self.redis.lrange(f"record:{room_id}:events", 0, -1)]
+        return record
+
+    async def drop_record(self, room_id: str):
+        await self.redis.delete(f"record:{room_id}", f"record:{room_id}:events")
 
     async def get_game_state(self, room_id: str) -> dict | None:
         key = f"game:{room_id}"

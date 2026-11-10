@@ -25,6 +25,9 @@ services:
       # IMPORTANT: Using Docker DNS. 'redis' refers to the service name defined above.
       - REDIS_URL=redis://redis:6379/0
       - INTERNAL_API_KEY=${INTERNAL_API_KEY:-dev-internal-key}
+      - RECORDS_DIR=/data/records
+    volumes:
+      - records:/data/records # Finished games, docs/game-record.md
     depends_on:
       redis:
         condition: service_healthy # Wait for Redis healthcheck to pass
@@ -100,3 +103,4 @@ networks:
 # Define persistent storage for Redis
 volumes:
   redis_data:
+  records:

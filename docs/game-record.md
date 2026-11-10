@@ -15,6 +15,28 @@ cd backend
 .venv/bin/python -m app.services.game_record check game.json
 ```
 
+## Where records come from
+
+- **Every game on the platform.** When a game starts, the backend stores the header in Redis
+  (`record:{room}`). Each later change of the game appends its events to `record:{room}:events`
+  in the same `MULTI` transaction that saves the state, under the room lock, so the record and
+  the state can never disagree: a refused action changes neither, and a crash between the two
+  writes is impossible. When the game ends, the record is closed and moved to
+  `RECORDS_DIR/{room}.json.gz` (`backend/records/` locally, the `records` volume in Docker).
+  Seats with a bot at the start are marked `"kind": "bot"`. A failed write is logged and
+  retried on the next change of the room; the game ends either way.
+- **Download.** `GET /api/rooms/{room}/record` returns the record of a finished game as
+  `catan-{room}.json`; the game-over dialog links to it. While the game runs the answer is
+  409, since the record shows every hand. The file outlives the room, which Redis drops after
+  a day. Anyone with the room ID can download it.
+- **Bot tournaments.** `go run ./cmd/tournament -records DIR` downloads the record of each
+  finished game, marks every seat as a bot of its level, sets `"source": "tournament"` and saves
+  it as `DIR/game-NNNNN-{room}.json.gz`. The older `-record` JSON lines hold only what each bot
+  saw, without other hands or the deck, so they are not converted.
+- **Simulations.** `simulate` above, between random players.
+
+`check` reads plain and gzipped files.
+
 ## Design
 
 - **A record is complete when it replays.** Replaying feeds every event through the same

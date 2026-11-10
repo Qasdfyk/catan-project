@@ -3,6 +3,7 @@
 // process and reports how often each level wins.
 //
 //	go run ./cmd/tournament -games 400 -levels easy,medium,medium,medium
+//	go run ./cmd/tournament -games 100 -levels hard,hard,hard,hard -records ../records
 package main
 
 import (
@@ -35,6 +36,7 @@ type config struct {
 	delay   time.Duration
 	seed    uint64
 	record  *recorder
+	records string
 }
 
 type session struct {
@@ -202,6 +204,14 @@ func playGame(ctx context.Context, cfg config, game int) result {
 			r.Error = "ended without a winner"
 		}
 	}
+	if cfg.records != "" && r.Winner >= 0 {
+		// The game's own deadline may be nearly spent
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := keepRecord(ctx, cfg, game, r.RoomID, levels); err != nil {
+			log.Printf("game %d: %v", game, err)
+		}
+	}
 	cfg.record.write(struct {
 		Game   int    `json:"game"`
 		Result result `json:"result"`
@@ -252,6 +262,7 @@ func main() {
 	seed := flag.Uint64("seed", 1, "seed of the bots that play by chance")
 	asJSON := flag.Bool("json", false, "print the summary as JSON")
 	recordPath := flag.String("record", "", "append every decision and result to this JSON lines file")
+	recordsDir := flag.String("records", "", "save the game record (docs/game-record.md) of every finished game in this directory")
 	flag.Parse()
 
 	levels := strings.Split(*levelList, ",")
@@ -263,7 +274,12 @@ func main() {
 			log.Fatalf("unknown level %q", level)
 		}
 	}
-	cfg := config{api: *api, ws: *ws, levels: levels, timeout: *timeout, delay: *delay, seed: *seed}
+	cfg := config{api: *api, ws: *ws, levels: levels, timeout: *timeout, delay: *delay, seed: *seed, records: *recordsDir}
+	if cfg.records != "" {
+		if err := os.MkdirAll(cfg.records, 0o755); err != nil {
+			log.Fatalf("records: %v", err)
+		}
+	}
 
 	if *recordPath != "" {
 		file, err := os.OpenFile(*recordPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)

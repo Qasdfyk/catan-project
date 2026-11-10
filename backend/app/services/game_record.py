@@ -12,8 +12,11 @@ Run as a module to record a game between random players, or to check a file:
 
     python -m app.services.game_record simulate --seed 7 --out game.json
     python -m app.services.game_record check game.json
+    python -m app.services.game_record check records/1a2b3c4d.json.gz
 """
 import argparse
+import copy
+import gzip
 import json
 import random
 import sys
@@ -156,6 +159,19 @@ def replay(record: Dict[str, Any], upto: Optional[int] = None) -> GameState:
     return game
 
 
+def fingerprint(game: GameState) -> Dict[str, Any]:
+    """
+    The whole state, minus what a replay legitimately changes: player ids and
+    the text log. Two games with equal fingerprints are the same game.
+    """
+    # A copy, because the serializer hands out the game's own lists
+    data = copy.deepcopy(GameSerializer.game_to_dict(game))
+    del data["log"]
+    for player in data["players"]:
+        del player["id"]
+    return data
+
+
 def simulate(seed: int, players: int = 4, max_actions: int = 40_000) -> Dict[str, Any]:
     """Records a whole game between random players."""
     from app.services.random_player import play_step
@@ -190,7 +206,9 @@ def _main(argv: List[str]) -> int:
         print(f"wrote {args.out}: {len(record['events'])} events, winner seat {record['result']['winner_seat']}")
         return 0
 
-    with open(args.path, encoding="utf-8") as file:
+    # Saved games are gzipped (app/services/record_store.py), downloaded ones are not
+    opener = gzip.open if args.path.endswith(".gz") else open
+    with opener(args.path, "rt", encoding="utf-8") as file:
         record = json.load(file)
     try:
         game = replay(record)

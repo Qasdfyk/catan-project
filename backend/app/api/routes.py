@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse
 from app.schemas.game_schemas import PlayerNameRequest, RoomSession, SessionRequest
 from app.services.room_service import RoomService
 
@@ -29,3 +30,14 @@ async def join_rematch(room_id: str, body: SessionRequest, rooms: RoomService = 
 async def get_room(room_id: str, rooms: RoomService = Depends(get_rooms)):
     """Public summary for the join screen. Holds no tokens and no game state."""
     return await rooms.get_summary(room_id)
+
+
+@router.get("/rooms/{room_id}/record")
+async def download_record(room_id: str, rooms: RoomService = Depends(get_rooms)):
+    """
+    The whole game, hidden cards included, as described in docs/game-record.md.
+    Only once the game is over: during it, the record would reveal every hand.
+    """
+    record = await rooms.get_record(room_id)
+    # get_record has checked the ID, so it is safe inside the header
+    return JSONResponse(record, headers={"Content-Disposition": f'attachment; filename="catan-{room_id}.json"'})

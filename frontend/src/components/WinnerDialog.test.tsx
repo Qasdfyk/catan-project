@@ -32,6 +32,7 @@ const render = (
             rematchStarted={rematchStarted}
             rematchError={rematchError}
             actionError={actionError}
+            recordUrl="/api/rooms/r1/record"
             onRematch={() => {}}
             onClose={() => {}}
         />
@@ -41,6 +42,12 @@ const render = (
 const button = (markup: string, label: string) => markup.match(new RegExp(`<button[^>]*>${label}</button>`))?.[0] ?? '';
 
 describe('WinnerDialog', () => {
+    it('offers the game record to everyone', () => {
+        for (const isHost of [true, false]) {
+            expect(render(isHost)).toContain('<a class="button" href="/api/rooms/r1/record" download="">Download game</a>');
+        }
+    });
+
     it('lets the host start a rematch', () => {
         const markup = render(true);
 
