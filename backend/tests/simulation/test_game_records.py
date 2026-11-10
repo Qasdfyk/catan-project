@@ -10,7 +10,7 @@ import pytest
 
 from app.models.game import GameState
 from app.models.settings import GameSettings
-from app.services.game_record import close_record, fingerprint, new_record, replay
+from app.services.game_record import close_record, fingerprint, new_record, replay, simulate
 from app.services.random_player import play_step
 from app.services.serializer import GameSerializer
 
@@ -73,3 +73,10 @@ def test_a_partial_replay_matches_the_game_at_that_point():
 
     for count, expected in snapshots[:: max(1, len(snapshots) // 25)]:
         assert fingerprint(replay(record, upto=count)) == expected
+
+
+def test_random_player_never_asks_the_bank_for_what_it_lacks():
+    # Found by the A3 playtest: in this game the bank runs out of ore, and the
+    # random player used to ask for it anyway
+    record = simulate(51, 4)
+    assert replay(json.loads(json.dumps(record))).is_game_over

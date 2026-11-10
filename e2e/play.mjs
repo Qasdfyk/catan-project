@@ -5,6 +5,10 @@
 // BOT_LEVEL (easy, medium or hard) sets the level of every bot; without it they stay medium.
 //
 // Fails on any console error, or if a part of the game was never reached.
+//
+// scripts/check.sh plays one person against three bots. Only a game between people
+// covers trades between them and a bot taking over a seat that was left, so run
+// PLAYERS=2 BOTS=0 as well when touching those (about 10 minutes, the clicks are random).
 import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 import { chromium } from 'playwright';
@@ -310,12 +314,22 @@ const checkReturnByName = async (context, tabs, roomUrl) => {
     await returned.goto(roomUrl);
     await returned.getByRole('heading', { name: 'Return to the game' }).waitFor();
 
-    // The gateway needs a moment to notice the closed tab
+    // The gateway needs a moment to notice the closed tab, so the first tries may be
+    // refused. Each try waits for its own outcome (the game, or the form's error) before
+    // deciding, because a slow success removes the Return button and a blind re-click
+    // would hang on it.
     await returned.getByLabel('Your name').fill(name);
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-        await returned.getByRole('button', { name: 'Return', exact: true }).click();
-        if (await returned.getByTestId('instruction').waitFor({ timeout: 500 }).then(() => true, () => false)) break;
+    const returnButton = returned.getByRole('button', { name: 'Return', exact: true });
+    const instruction = returned.getByTestId('instruction');
+    const refused = returned.locator('form').getByRole('alert');
+    let back = false;
+    for (let attempt = 0; attempt < 20 && !back; attempt += 1) {
+        await returnButton.click({ timeout: 5000 });
+        await instruction.or(refused).first().waitFor({ timeout: 10000 });
+        back = await instruction.isVisible();
+        if (!back) await returned.waitForTimeout(250);
     }
+    assert.ok(back, `${name} could not return to the game`);
     problems.length = 0;
     await returned.getByText('(you)').waitFor();
     assert.match(await returned.locator('.player', { hasText: '(you)' }).textContent(), new RegExp(name));
@@ -338,14 +352,16 @@ const checkBotTakesOver = async (context, tabs, roomUrl) => {
     const button = tabs[0].getByRole('button', { name: `Let a bot play for ${name}` });
     await button.waitFor({ timeout: 10000 });
     await button.click();
-    await tabs[0].locator('.player', { hasText: name }).getByText('(bot)').waitFor();
+    // The label names the level too: "(bot, medium)"
+    const botMark = tabs[0].locator('.player', { hasText: name }).getByText(/\(bot\b/);
+    await botMark.waitFor();
 
     const returned = await openTab(context, name);
     await returned.goto(roomUrl);
     await returned.getByLabel('Your name').fill(name);
     await returned.getByRole('button', { name: 'Return', exact: true }).click();
     await returned.getByText('(you)').waitFor();
-    assert.equal(await tabs[0].locator('.player', { hasText: name }).getByText('(bot)').count(), 0);
+    await botMark.waitFor({ state: 'detached' });
     tabs[index] = returned;
 };
 

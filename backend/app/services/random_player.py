@@ -84,8 +84,9 @@ def play_step(game: GameState, rng: random.Random):
             game.place_road(player, rng.choice(roads))
         else:
             for give in TRADABLE_RESOURCES:
-                if player.resources[give] >= game.trade_rate(player, give):
-                    get = rng.choice([r for r in TRADABLE_RESOURCES if r != give])
-                    game.trade_with_bank(player, give, get)
+                # The bank can run out of a resource, so only those it still has are asked for
+                wanted = [r for r in TRADABLE_RESOURCES if r != give and game.bank_count(r) > 0]
+                if wanted and player.resources[give] >= game.trade_rate(player, give):
+                    game.trade_with_bank(player, give, rng.choice(wanted))
                     return
             game.end_turn(player)
