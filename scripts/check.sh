@@ -4,7 +4,8 @@
 #   scripts/check.sh          lint and tests of the backend, gateway and frontend
 #   scripts/check.sh --e2e    also plays a game in a browser against 3 hard bots
 #
-# Needs what scripts/dev.sh needs. Backend tests use Redis on localhost:6379, started here if absent.
+# Needs what scripts/dev.sh needs. Backend tests use Redis on localhost:6379, started here if absent,
+# in database 14, so a game running in scripts/dev.sh (database 0) is left alone.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

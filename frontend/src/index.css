@@ -112,6 +112,10 @@ label.check input { width: auto; margin: 0; flex: none; }
   padding: 8px 16px;
   background: var(--surface);
   border-bottom: 1px solid var(--line);
+  /* Tall enough for the dice (30px) whether they are shown or not. The board takes
+     what the bars leave, so a bar that grows when the dice appear would resize the
+     board at every roll. */
+  min-height: calc(30px + 2 * 8px + 1px);
 }
 /* Whose turn it is, what to do now and the time left, read together. */
 .turn-status { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
