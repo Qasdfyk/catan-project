@@ -338,8 +338,14 @@ const checkReturnByName = async (context, tabs, roomUrl) => {
 
 const checkChat = async (tabs) => {
     const [sender, receiver] = [tabs[0], tabs[tabs.length - 1]];
+    // The chat shares a box with the log, so each side opens its tab
+    await sender.getByRole('tab', { name: 'Chat' }).click();
     await sender.getByRole('textbox', { name: 'Message' }).fill('Anyone got wood?');
     await sender.getByRole('textbox', { name: 'Message' }).press('Enter');
+    if (receiver !== sender) {
+        // Unread until the receiver looks
+        await receiver.getByRole('tab', { name: /Chat\s*1/ }).click();
+    }
     await receiver.getByRole('region', { name: 'Chat' }).getByText('Anyone got wood?').waitFor();
 };
 
