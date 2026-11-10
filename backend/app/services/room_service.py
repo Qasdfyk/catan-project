@@ -177,7 +177,21 @@ class RoomService:
         room = await self._load_room(room_id)
         if room["status"] != "finished":
             raise RoomConflict("The game is not over yet.")
-        raise RoomNotFound()
+
+        # The save at the end of the game failed. Nothing else changes a finished
+        # room unless the host starts a rematch, so the download tries again, and
+        # hands out the record from Redis even if the disk still refuses it.
+        async with self.redis.room_lock(room_id):
+            room = await self._load_room(room_id)
+            if room.get("record_saved"):
+                # Saved by a request that held the lock before this one
+                record = await asyncio.to_thread(self.records.load, room_id)
+            else:
+                record = await self._save_record(room, await self._load_game(room))
+                await self._store(room)
+        if record is None:
+            raise RoomNotFound()
+        return record
 
     async def join_rematch(self, room_id: str, token: str) -> RoomSession:
         """Trades a session of a finished game for the same seat in its rematch."""
@@ -352,7 +366,7 @@ class RoomService:
                 room["room_id"], GameSerializer.game_to_dict(game), events=game.take_events()
             )
             if game.is_game_over and not room.get("record_saved"):
-                room["record_saved"] = await self._save_record(room, game)
+                await self._save_record(room, game)
         await self._store(room)
         await self.redis.publish_event(self._event(room, game))
 
@@ -364,25 +378,29 @@ class RoomService:
         ]
         return new_record(game, source="platform", players=players, game_id=room["room_id"])
 
-    async def _save_record(self, room: Dict[str, Any], game: GameState) -> bool:
+    async def _save_record(self, room: Dict[str, Any], game: GameState) -> Optional[Dict[str, Any]]:
         """
-        Moves the record of a finished game from Redis to disk. A failure is
-        logged and leaves the record in Redis, so the next change of the room
-        (a rematch, say) tries again; the game itself must end either way.
+        Moves the record of a finished game from Redis to disk and sets
+        room["record_saved"]. A failure is logged and leaves the record in
+        Redis, so a rematch or a download tries again; the game itself must end
+        either way. Returns the closed record, saved or not, or None for a game
+        that has none.
         """
         room_id = room["room_id"]
+        room["record_saved"] = False
         record = await self.redis.load_record(room_id)
         if record is None:
             log.warning("Room %s finished without a record; it started before records existed.", room_id)
-            return False
+            return None
         close_record(record, game)
         try:
             await asyncio.to_thread(self.records.save, room_id, record)
         except OSError:
             log.exception("Could not save the record of room %s.", room_id)
-            return False
+            return record
         await self.redis.drop_record(room_id)
-        return True
+        room["record_saved"] = True
+        return record
 
     async def _update_turn_deadline(self, room: Dict[str, Any], game: Optional[GameState]):
         """Every step of a turn (rolling, discarding, moving the robber...) gets the full time."""

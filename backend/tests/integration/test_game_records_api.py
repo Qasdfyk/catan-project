@@ -2,6 +2,7 @@
 Records of real games: written while the game runs, saved when it ends,
 downloadable afterwards, and replaying to exactly the game the server stored.
 """
+import asyncio
 import random
 
 import pytest
@@ -146,3 +147,73 @@ async def test_failed_save_still_ends_the_game(client, monkeypatch):
     assert not room["record_saved"]
     # Kept in Redis for the next try
     assert (await app.state.redis.load_record(room_id))["result"] is None
+
+
+def broken_disk(*_):
+    raise OSError("disk full")
+
+
+async def finish_without_saving(client, monkeypatch, seed=5):
+    host, guest = await started_room(client)
+    room_id = host["room_id"]
+    with monkeypatch.context() as patch:
+        patch.setattr(app.state.rooms.records, "save", broken_disk)
+        stored = await play_to_the_end(client, room_id, [host["token"], guest["token"]], seed=seed)
+    return host, stored
+
+
+@pytest.mark.asyncio
+async def test_download_retries_a_failed_save(client, monkeypatch):
+    host, stored = await finish_without_saving(client, monkeypatch)
+    room_id = host["room_id"]
+
+    response = await download(client, room_id)
+
+    assert response.status_code == 200
+    assert fingerprint(replay(response.json())) == fingerprint(stored)
+    assert (await app.state.redis.get_room(room_id))["record_saved"]
+    assert app.state.rooms.records.path(room_id).exists()
+    assert await app.state.redis.load_record(room_id) is None
+
+
+@pytest.mark.asyncio
+async def test_download_serves_the_record_while_the_disk_still_fails(client, monkeypatch):
+    host, stored = await finish_without_saving(client, monkeypatch)
+    room_id = host["room_id"]
+    monkeypatch.setattr(app.state.rooms.records, "save", broken_disk)
+
+    response = await download(client, room_id)
+
+    assert response.status_code == 200
+    record = response.json()
+    assert record["result"]["winner_seat"] == stored.seat_of(stored.winner)
+    assert fingerprint(replay(record)) == fingerprint(stored)
+    # Still in Redis for the next try
+    assert not (await app.state.redis.get_room(room_id))["record_saved"]
+    assert (await app.state.redis.load_record(room_id))["result"] is None
+
+
+@pytest.mark.asyncio
+async def test_rematch_retries_a_failed_save(client, monkeypatch):
+    host, stored = await finish_without_saving(client, monkeypatch)
+    room_id = host["room_id"]
+
+    assert (await act(client, room_id, host["token"], "rematch")).status_code == 200
+
+    assert (await app.state.redis.get_room(room_id))["record_saved"]
+    assert app.state.rooms.records.path(room_id).exists()
+
+
+@pytest.mark.asyncio
+async def test_parallel_downloads_save_once(client, monkeypatch):
+    host, stored = await finish_without_saving(client, monkeypatch)
+    room_id = host["room_id"]
+    saves = []
+    real_save = app.state.rooms.records.save
+    monkeypatch.setattr(app.state.rooms.records, "save", lambda *args: (saves.append(1), real_save(*args)))
+
+    responses = await asyncio.gather(*(download(client, room_id) for _ in range(5)))
+
+    assert [r.status_code for r in responses] == [200] * 5
+    assert len({r.text for r in responses}) == 1
+    assert len(saves) == 1
