@@ -365,6 +365,14 @@ const checkBotTakesOver = async (context, tabs, roomUrl) => {
     tabs[index] = returned;
 };
 
+// The board fills what the bars leave, so it must keep its size when they change:
+// a bar that grows for a moment makes the whole board shrink and come back.
+const boardHeights = new Set();
+const noteBoardHeight = async (page) => {
+    const box = await page.locator('.board-area').boundingBox();
+    if (box) boardHeights.add(Math.round(box.height));
+};
+
 const noteLongestRoad = async (page) => {
     if (await page.locator('.player-stats', { hasText: '★' }).count()) seen.longestRoad += 1;
 };
@@ -392,6 +400,7 @@ const main = async () => {
         }
 
         await noteLongestRoad(tabs[0]);
+        await noteBoardHeight(tabs[0]);
         if (tabs.length === 1) await tabs[0].waitForTimeout(40);
 
         if (steps % 100 === 0) console.log(`step ${steps}:`, JSON.stringify(seen));
@@ -408,6 +417,7 @@ const main = async () => {
     }
 
     assert.ok(winner, `no winner after ${MAX_STEPS} steps`);
+    assert.equal(boardHeights.size, 1, `the board changed its height during the game: ${[...boardHeights]}`);
     await shot(tabs[0], '06-game-over');
     await tabs[0].getByRole('dialog', { name: 'Game over' }).waitFor();
 
