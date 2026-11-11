@@ -64,6 +64,7 @@ def new_record(
         "started_at": _now(),
         "finished_at": None,
         "settings": game.settings.to_dict(),
+        "first_seat": game.setup_queue[0],
         "players": [
             {"seat": seat, "name": p.name, "color": p.color.value, "kind": "human", "bot_level": None, **extra[seat]}
             for seat, p in enumerate(game.players)
@@ -127,7 +128,9 @@ def _start(record: Dict[str, Any]) -> GameState:
         deck = [DevCard(card) for card in reversed(record["dev_deck"]["cards"])]
         players = sorted(record["players"], key=lambda p: p["seat"])
         game = GameState.create_new_game(
-            [p["name"] for p in players], GameSettings.from_dict(record["settings"]), board=board, dev_deck=deck
+            [p["name"] for p in players], GameSettings.from_dict(record["settings"]), board=board, dev_deck=deck,
+            # Records from before the order was random always started at seat 0
+            first_seat=record.get("first_seat", 0),
         )
     except (KeyError, TypeError, ValueError) as error:
         raise RecordError(f"Broken header: {error}") from None

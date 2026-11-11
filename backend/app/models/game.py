@@ -147,10 +147,16 @@ class GameState:
         settings: Optional[GameSettings] = None,
         board: Optional[Board] = None,
         dev_deck: Optional[List[DevCard]] = None,
+        first_seat: int = 0,
     ) -> 'GameState':
-        """A replay passes the recorded board and deck; a new game draws its own."""
+        """
+        A replay passes the recorded board and deck; a new game draws its own.
+        Play goes round by seat number, starting with `first_seat`.
+        """
         if len(player_names) < 2 or len(player_names) > 4:
             raise ValueError("Game requires 2 to 4 players.")
+        if not 0 <= first_seat < len(player_names):
+            raise ValueError("The first player must sit at the table.")
 
         settings = settings or GameSettings()
         board = board or Board.create_standard_game(desert=settings.desert)
@@ -165,8 +171,9 @@ class GameState:
         # Find Desert to place Robber initially
         desert_hex = next((t.hex_coords for t in board.tiles.values() if t.resource == ResourceType.DESERT), Hex(0,0,0))
 
-        # Create Snake Draft Queue: [0, 1, 2, 2, 1, 0]
-        indices = list(range(len(players)))
+        # Snake draft from the first player, e.g. [1, 2, 0, 0, 2, 1]; the last
+        # placement is theirs, so they also take the first regular turn
+        indices = [(first_seat + i) % len(players) for i in range(len(players))]
         setup_queue = indices + indices[::-1]
 
         if dev_deck is None:
@@ -220,8 +227,8 @@ class GameState:
 
             if not self.setup_queue:
                 # End of Setup
+                # The first player placed last and keeps the turn
                 self.turn_phase = TurnPhase.ROLL_DICE
-                self.current_turn_index = 0
                 self.dice_roll = None
             else:
                 # Next setup turn

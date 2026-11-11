@@ -98,6 +98,7 @@ Lists are shortened above: a standard board has 19 tiles and 9 ports, and the de
 | `game_id` | The room id on the platform, or `null`. |
 | `started_at`, `finished_at` | UTC, ISO 8601. `finished_at` and `result` are `null` until the game ends. |
 | `settings` | The house rules of the game, as in `GameSettings`. |
+| `first_seat` | Who plays first, drawn at random when the game starts. Setup goes `first_seat`, then up the seat numbers round the table and back in snake order, and `first_seat` takes the first regular turn. Missing in older records, which always started at `0`. |
 | `players` | One entry per seat, in seat order. Colors follow seat order: red, blue, white, orange. `kind` is `human` or `bot`; `bot_level` is `easy`, `medium`, `hard`, `random` or `null`. |
 | `board.tiles` | Every land tile: its hex, `resource` (`wood`, `brick`, `sheep`, `wheat`, `ore`, `desert`) and `number` (`null` on the desert). |
 | `board.ports` | Every port: `type` (`3:1` or `2:1` with a resource) and the two vertices that use it. |
