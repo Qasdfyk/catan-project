@@ -24,6 +24,9 @@ from app.services.views import private_view, public_view
 MAX_SEATS = 4
 MIN_SEATS_TO_START = 2
 BOT_NAMES = ("Ada", "Boole", "Turing", "Lovelace")
+# The turn timer stops after this many rounds of timed-out turns with nobody
+# connected, so an abandoned game stops saving itself and Redis lets it expire
+IDLE_ROUNDS_BEFORE_PAUSE = 2
 
 log = logging.getLogger(__name__)
 
@@ -123,8 +126,11 @@ class RoomService:
         }
 
     async def get_session_state(self, room_id: str, token: str) -> Dict[str, Any]:
+        """Asked by the gateway for every connection, so a player who comes back restarts a paused timer."""
         room = await self._load_room(room_id)
         seat = self._seat_by_token(room, token)
+        if self._timer_paused(room):
+            room = await self._resume_timer(room_id)
         game = await self._load_game(room)
         return {"seat": seat, "public": public_view(room, game), "private": private_view(game, seat)}
 
@@ -134,6 +140,8 @@ class RoomService:
             # The token is checked on every action, so a replaced session loses access at once
             seat = self._seat_by_token(room, token)
             game = await self._load_game(room)
+            # Somebody is here, so a paused timer starts again with this commit
+            room.pop("idle_timeouts", None)
 
             if action_type == "start_game":
                 game = self._start_game(room, seat, self.first_seat)
@@ -215,6 +223,12 @@ class RoomService:
         Finishes the turn of whoever let the time run out. Called by the bot
         service once a second for each due room, so an early, late or repeated
         call must do no harm. Returns whether a turn was finished.
+
+        Turns that time out while no seat is connected are counted; after
+        IDLE_ROUNDS_BEFORE_PAUSE rounds of them the timer stops (see
+        _timer_paused). Without that, a game everyone left would play itself
+        forever, since finishing a turn never builds and nobody can win, and
+        every save would push back the expiry of its keys.
         """
         async with self.redis.room_lock(room_id):
             room = await self.redis.get_room(room_id)
@@ -225,11 +239,34 @@ class RoomService:
                 return False
 
             game = await self._load_game(room)
+            if await self.redis.online_seats(room_id, len(room["seats"])):
+                room.pop("idle_timeouts", None)
+            else:
+                room["idle_timeouts"] = room.get("idle_timeouts", 0) + 1
             game.auto_finish_turn()
             if game.is_game_over:
                 room["status"] = "finished"
             await self._commit(room, game)
+            if self._timer_paused(room):
+                log.info("Paused the turn timer of room %s: nobody connected for %d turns.",
+                         room_id, room["idle_timeouts"])
             return True
+
+    @staticmethod
+    def _timer_paused(room: Dict[str, Any]) -> bool:
+        idle_limit = IDLE_ROUNDS_BEFORE_PAUSE * len(room["seats"])
+        return room["status"] == "playing" and room.get("idle_timeouts", 0) >= idle_limit
+
+    async def _resume_timer(self, room_id: str) -> Dict[str, Any]:
+        """Gives the turn on hold its full time again. Returns the room as saved."""
+        async with self.redis.room_lock(room_id):
+            room = await self._load_room(room_id)
+            # Another connection may have resumed it while this one waited for the lock
+            if self._timer_paused(room):
+                room.pop("idle_timeouts")
+                await self._commit(room, await self._load_game(room))
+                log.info("Resumed the turn timer of room %s.", room_id)
+            return room
 
     @staticmethod
     def _verify_lobby_host(room: Dict[str, Any], seat: int):
@@ -410,7 +447,8 @@ class RoomService:
 
     async def _update_turn_deadline(self, room: Dict[str, Any], game: Optional[GameState]):
         """Every step of a turn (rolling, discarding, moving the robber...) gets the full time."""
-        if game is None or room["status"] != "playing" or game.is_game_over or not game.settings.turn_seconds:
+        if (game is None or room["status"] != "playing" or game.is_game_over
+                or not game.settings.turn_seconds or self._timer_paused(room)):
             room.update(turn_deadline=None, turn_key=None)
             await self.redis.clear_turn_deadline(room["room_id"])
             return
