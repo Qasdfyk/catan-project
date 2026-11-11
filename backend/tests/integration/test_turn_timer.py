@@ -278,3 +278,76 @@ async def test_timeout_that_ends_the_game_stops_the_timer(client, clock):
     assert public["turn_deadline"] is None
     assert await deadline_score(room_id) is None
     assert (await time_out(client, room_id)).json()["finished"] is False
+
+
+async def mark_online(room_id, seat):
+    """Sets the presence key the gateway keeps for a connected seat."""
+    await app.state.redis.redis.set(f"presence:{room_id}:{seat}", "1", ex=45)
+
+
+async def time_out_turns(client, clock, room_id, turns):
+    """Lets each of the next turns run out, one by one."""
+    for _ in range(turns):
+        clock.now += 60
+        assert (await time_out(client, room_id)).json()["finished"] is True
+
+
+@pytest.mark.asyncio
+async def test_timer_stops_after_two_rounds_with_nobody_connected(client, clock):
+    host, _ = await timed_room(client)
+    room_id = host["room_id"]
+
+    await time_out_turns(client, clock, room_id, 3)
+    assert await deadline_score(room_id) is not None
+
+    await time_out_turns(client, clock, room_id, 1)
+    assert await deadline_score(room_id) is None
+    room = await app.state.redis.get_room(room_id)
+    assert room["status"] == "playing"
+    assert room["turn_deadline"] is None
+
+    # A late call from the bot service saves nothing, so the keys can expire
+    clock.now += 600
+    assert (await time_out(client, room_id)).json()["finished"] is False
+    assert (await app.state.redis.get_room(room_id))["version"] == room["version"]
+
+
+@pytest.mark.asyncio
+async def test_only_turns_in_a_row_with_nobody_connected_count(client, clock):
+    host, _ = await timed_room(client)
+    room_id = host["room_id"]
+
+    await time_out_turns(client, clock, room_id, 3)
+    await mark_online(room_id, 1)
+    await time_out_turns(client, clock, room_id, 1)
+    await app.state.redis.redis.delete(f"presence:{room_id}:1")
+    await time_out_turns(client, clock, room_id, 3)
+
+    assert await deadline_score(room_id) is not None
+
+
+@pytest.mark.asyncio
+async def test_a_connected_seat_keeps_the_timer_running(client, clock):
+    host, _ = await timed_room(client)
+    room_id = host["room_id"]
+    await mark_online(room_id, 0)
+
+    await time_out_turns(client, clock, room_id, 8)
+
+    assert await deadline_score(room_id) is not None
+
+
+@pytest.mark.asyncio
+async def test_a_player_who_comes_back_restarts_the_timer(client, clock):
+    host, _ = await timed_room(client)
+    room_id = host["room_id"]
+    await time_out_turns(client, clock, room_id, 4)
+    clock.now += 3600
+
+    public = (await session(client, host["room_id"], host["token"]))["public"]
+
+    assert public["turn_deadline"] == clock.now + 60
+    assert await deadline_score(room_id) == clock.now + 60
+    # The count starts over, so the next turn nobody plays does not pause it again
+    await time_out_turns(client, clock, room_id, 1)
+    assert await deadline_score(room_id) is not None
