@@ -155,3 +155,27 @@ def test_the_recorded_deck_decides_the_cards_drawn(sample):
     buyer = replayed.players[first(sample, "buy_dev_card")["seat"]]
 
     assert buyer.new_dev_cards == [DevCard(record["dev_deck"]["cards"][0])]
+
+
+def test_a_game_that_does_not_start_at_seat_0_replays():
+    from app.services.game_record import fingerprint
+    from app.services.random_player import play_step
+
+    random.seed(3)
+    rng = random.Random(3)
+    game = GameState.create_new_game(["Alice", "Bob", "Charlie"], first_seat=1)
+    record = new_record(game, source="simulation")
+    for _ in range(300):
+        play_step(game, rng)
+        record["events"] += game.take_events()
+
+    assert record["first_seat"] == 1
+    assert record["events"][0]["seat"] == 1
+    assert fingerprint(replay(record)) == fingerprint(game)
+
+
+def test_an_old_record_without_first_seat_starts_at_seat_0(sample):
+    old = copy.deepcopy(sample)
+    del old["first_seat"]
+
+    assert replay(old).winner.name == replay(sample).winner.name

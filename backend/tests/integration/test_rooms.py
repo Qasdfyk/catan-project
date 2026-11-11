@@ -75,6 +75,23 @@ async def test_only_host_starts_the_game(client):
 
 
 @pytest.mark.asyncio
+async def test_the_starting_player_is_drawn_at_random(client):
+    drawn = []
+
+    def draw(seats):
+        drawn.append(seats)
+        return 1
+
+    app.state.rooms.first_seat = draw
+    host, guest = await started_room(client)
+
+    state = await session(client, host["room_id"], guest["token"])
+    assert drawn == [2]
+    assert state["public"]["game"]["current_seat"] == 1
+    assert len(state["private"]["legal"]["settlements"]) == 54
+
+
+@pytest.mark.asyncio
 async def test_game_needs_two_players(client):
     host = await create_room(client)
 

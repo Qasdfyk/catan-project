@@ -97,3 +97,20 @@ class TestSetupPhase:
         assert alice.resources[ResourceType.WOOD] == 1
         assert alice.resources[ResourceType.BRICK] == 1
         assert sum(alice.resources.values()) == 2
+
+
+def test_setup_and_play_start_with_the_first_seat():
+    game = GameState.create_new_game(["Alice", "Bob", "Charlie"], first_seat=2)
+    order = []
+    while game.turn_phase == TurnPhase.SETUP:
+        order.append(game.current_turn_index)
+        game.next_turn()
+
+    assert order == [2, 0, 1, 1, 0, 2]
+    assert game.turn_phase == TurnPhase.ROLL_DICE
+    assert game.current_turn_index == 2
+
+
+def test_the_first_seat_must_exist():
+    with pytest.raises(ValueError):
+        GameState.create_new_game(["Alice", "Bob"], first_seat=2)

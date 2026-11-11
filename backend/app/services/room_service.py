@@ -4,6 +4,7 @@ which a game state changes (load, validate, save, publish) under a room lock.
 """
 import asyncio
 import logging
+import random
 import secrets
 import time
 import uuid
@@ -60,6 +61,8 @@ class RoomService:
         self.records = records or RecordStore(config.RECORDS_DIR)
         # Replaced in tests to move time forward
         self.clock = time.time
+        # Picks who plays first among n seats; replaced in tests to fix the order
+        self.first_seat = random.randrange
 
     async def create_room(self, host_name: str) -> RoomSession:
         room_id = uuid.uuid4().hex[:8]
@@ -133,7 +136,7 @@ class RoomService:
             game = await self._load_game(room)
 
             if action_type == "start_game":
-                game = self._start_game(room, seat)
+                game = self._start_game(room, seat, self.first_seat)
                 await self.redis.start_record(room_id, self._new_record(room, game))
                 # Saved before the bots connect, which is why _commit comes first
                 await self._commit(room, game)
@@ -345,7 +348,7 @@ class RoomService:
                 await self.redis.summon_bot(room["room_id"], entry["token"], entry.get("level", DEFAULT_BOT_LEVEL))
 
     @staticmethod
-    def _start_game(room: Dict[str, Any], seat: int) -> GameState:
+    def _start_game(room: Dict[str, Any], seat: int, first_seat) -> GameState:
         if seat != room["host_seat"]:
             raise RoomError("Only the host can start the game.")
         if room["status"] != "lobby":
@@ -354,7 +357,10 @@ class RoomService:
             raise RoomError(f"At least {MIN_SEATS_TO_START} players are needed.")
 
         settings = GameSettings.from_dict(room.get("settings"))
-        game = GameState.create_new_game([entry["name"] for entry in room["seats"]], settings)
+        # Seats keep their numbers (the gateway routes by them), so the order is
+        # randomised by who starts, not by shuffling the seats
+        names = [entry["name"] for entry in room["seats"]]
+        game = GameState.create_new_game(names, settings, first_seat=first_seat(len(names)))
         room["status"] = "playing"
         return game
 

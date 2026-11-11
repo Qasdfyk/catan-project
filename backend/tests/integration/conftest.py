@@ -12,6 +12,8 @@ async def client(tmp_path):
     # httpx does not run the lifespan, so the app state is set up here
     app.state.redis = RedisService()
     app.state.rooms = RoomService(app.state.redis, RecordStore(tmp_path / "records"))
+    # The host plays first, so tests know whose turn it is
+    app.state.rooms.first_seat = lambda seats: 0
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:
         yield http
