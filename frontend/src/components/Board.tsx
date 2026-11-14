@@ -13,6 +13,7 @@ import {
     type Point,
 } from '../utils/hexLayout';
 import { PLAYER_COLORS } from '../utils/labels';
+import './board.css';
 
 const BOARD_EXTENT = HEX_SIZE * 5.3;
 const VIEW_BOX = `${-BOARD_EXTENT} ${-BOARD_EXTENT} ${BOARD_EXTENT * 2} ${BOARD_EXTENT * 2}`;

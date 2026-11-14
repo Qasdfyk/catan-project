@@ -12,9 +12,6 @@
   --danger: #b3261e;
   --sea: #2f7fa3;
   --highlight: #e6b93a;
-  --glow: #fff2a8;
-  --recent: #ffffff;
-  --robber-mark: rgba(30, 30, 30, .7);
   --gain: #2e8540;
   --wood: #7b4f2c;
   --wood-dark: #553520;
@@ -155,33 +152,6 @@ label.check input { width: auto; margin: 0; flex: none; }
 }
 
 .board-area { grid-area: board; min-height: 0; min-width: 0; background: var(--sea); padding: 4px; }
-.board { display: block; width: 100%; height: 100%; }
-
-
-.token circle { fill: #fbf6e7; stroke: #6d5f43; stroke-width: 1; }
-.token text { font-size: 18px; font-weight: 700; text-anchor: middle; dominant-baseline: central; fill: #2b2b2b; }
-.token .pips { font-size: 10px; letter-spacing: -1px; }
-.token.hot text { fill: #b3261e; }
-
-.port line { stroke: #f4ead0; stroke-width: 3; stroke-dasharray: 4 4; }
-.port circle { stroke: #3b3b3b; stroke-width: 1.5; }
-.port text { font-size: 13px; font-weight: 700; text-anchor: middle; dominant-baseline: central; fill: #1d1d1d; }
-
-.road { stroke-width: 8; stroke-linecap: round; }
-.road-outline { stroke: #222; stroke-width: 11; stroke-linecap: round; }
-
-.piece { stroke: #222; stroke-width: 2; stroke-linejoin: round; }
-
-.robber { fill: #2b2b2b; stroke: #f4ead0; stroke-width: 1.5; pointer-events: none; }
-
-.target { cursor: pointer; }
-.target-vertex { fill: rgba(255, 255, 255, .55); stroke: #fff; stroke-width: 3; stroke-dasharray: 5 4; }
-.target-vertex:hover { fill: #ffe25c; }
-.target-hex { fill: rgba(255, 255, 255, .16); stroke: #fff; stroke-width: 3; stroke-dasharray: 8 6; }
-.target-hex:hover { fill: rgba(255, 226, 92, .55); }
-.target-road-mark { stroke: rgba(255, 255, 255, .85); stroke-width: 6; stroke-linecap: round; stroke-dasharray: 8 8; }
-.target-road-hit { stroke: transparent; stroke-width: 24; }
-.target-road:hover .target-road-mark { stroke: #ffe25c; stroke-dasharray: none; }
 
 .side {
   grid-area: side;
@@ -312,28 +282,6 @@ a.button { display: inline-block; padding: 8px 12px; border-radius: 6px; text-al
 a.button.primary { flex: 1; background: var(--accent); color: var(--accent-text); font-weight: 600; }
 a.button:not(.primary) { flex: 1; border: 1px solid var(--line); background: var(--surface); color: var(--text); }
 a.button:not(.primary):hover { background: var(--surface-2); }
-
-.board-area { background: radial-gradient(circle at 50% 45%, #3c9cc6, #1f6d94 75%); }
-
-.tile { transition: filter .4s; }
-.tile.rolled { filter: brightness(1.14); }
-.rolled-outline { fill: none; stroke: var(--glow); stroke-width: 5; stroke-linejoin: round; pointer-events: none; animation: glow-in .4s ease-out; }
-@keyframes glow-in { from { stroke-opacity: 0; } to { stroke-opacity: 1; } }
-
-/* The pieces built last and the robber's new tile */
-.recent { pointer-events: none; }
-.recent-ring, .recent-hex, .recent-road { fill: none; stroke: var(--recent); stroke-linecap: round; animation: recent-pulse 2.4s ease-in-out infinite; }
-.recent-ring { stroke-width: 3.5; }
-.recent-hex { stroke: var(--robber-mark); stroke-width: 5; stroke-dasharray: 12 8; }
-.recent-road { stroke-width: 19; }
-@keyframes recent-pulse { 50% { opacity: .6; } }
-
-
-.piece, .road { animation: pop-in .22s ease-out; transform-box: fill-box; transform-origin: center; }
-@keyframes pop-in { from { opacity: .2; transform: scale(.6); } to { opacity: 1; transform: scale(1); } }
-
-.target-vertex, .target-hex { animation: pulse 1.3s ease-in-out infinite; }
-@keyframes pulse { 50% { stroke-opacity: .45; } }
 
 .topbar { transition: background .25s, box-shadow .25s; }
 .topbar > strong { font-family: Georgia, 'Times New Roman', serif; font-size: 19px; letter-spacing: .02em; color: var(--wood-dark); }
