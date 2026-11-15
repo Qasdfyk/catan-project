@@ -1,0 +1,265 @@
+{
+  "levels": [
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo"
+  ],
+  "games": 400,
+  "finished": 400,
+  "timed_out": 0,
+  "failed": 0,
+  "by_level": [
+    {
+      "level": "zoo:wood-brick:wary",
+      "seats": 0.2825,
+      "fair_share": 0.070625,
+      "wins": 34,
+      "rate": 0.085,
+      "ci_low": 0.061462653163424086,
+      "ci_high": 0.11643283853431088
+    },
+    {
+      "level": "zoo:port:loner",
+      "seats": 0.245,
+      "fair_share": 0.06125,
+      "wins": 22,
+      "rate": 0.055,
+      "ci_low": 0.036598221864059276,
+      "ci_high": 0.08186802826965653
+    },
+    {
+      "level": "zoo:ore-wheat:wary",
+      "seats": 0.2575,
+      "fair_share": 0.064375,
+      "wins": 33,
+      "rate": 0.0825,
+      "ci_low": 0.059345516507342,
+      "ci_high": 0.11359753839339136
+    },
+    {
+      "level": "zoo:balanced:fair",
+      "seats": 0.26,
+      "fair_share": 0.065,
+      "wins": 34,
+      "rate": 0.085,
+      "ci_low": 0.061462653163424086,
+      "ci_high": 0.11643283853431088
+    },
+    {
+      "level": "zoo:wood-brick:friendly",
+      "seats": 0.305,
+      "fair_share": 0.07625,
+      "wins": 21,
+      "rate": 0.0525,
+      "ci_low": 0.03459126500804263,
+      "ci_high": 0.07892254832867157
+    },
+    {
+      "level": "zoo:port:fair",
+      "seats": 0.225,
+      "fair_share": 0.05625,
+      "wins": 18,
+      "rate": 0.045,
+      "ci_low": 0.028651223384090457,
+      "ci_high": 0.07000527956161895
+    },
+    {
+      "level": "zoo:ore-wheat:fair",
+      "seats": 0.2,
+      "fair_share": 0.05,
+      "wins": 29,
+      "rate": 0.0725,
+      "ci_low": 0.05095018845006176,
+      "ci_high": 0.1021831192626652
+    },
+    {
+      "level": "zoo:ore-wheat:friendly",
+      "seats": 0.29,
+      "fair_share": 0.0725,
+      "wins": 34,
+      "rate": 0.085,
+      "ci_low": 0.061462653163424086,
+      "ci_high": 0.11643283853431088
+    },
+    {
+      "level": "zoo:port:wary",
+      "seats": 0.24,
+      "fair_share": 0.06,
+      "wins": 15,
+      "rate": 0.0375,
+      "ci_low": 0.022854824841380277,
+      "ci_high": 0.06094436771332434
+    },
+    {
+      "level": "zoo:balanced:wary",
+      "seats": 0.195,
+      "fair_share": 0.04875,
+      "wins": 27,
+      "rate": 0.0675,
+      "ci_low": 0.046801154899328234,
+      "ci_high": 0.09642727921939556
+    },
+    {
+      "level": "zoo:ore-wheat:loner",
+      "seats": 0.2275,
+      "fair_share": 0.056875,
+      "wins": 21,
+      "rate": 0.0525,
+      "ci_low": 0.03459126500804263,
+      "ci_high": 0.07892254832867157
+    },
+    {
+      "level": "zoo:balanced:friendly",
+      "seats": 0.255,
+      "fair_share": 0.06375,
+      "wins": 23,
+      "rate": 0.0575,
+      "ci_low": 0.038617261729224514,
+      "ci_high": 0.08480142520149289
+    },
+    {
+      "level": "zoo:port:friendly",
+      "seats": 0.26,
+      "fair_share": 0.065,
+      "wins": 19,
+      "rate": 0.0475,
+      "ci_low": 0.030616832107668652,
+      "ci_high": 0.07299210763504237
+    },
+    {
+      "level": "zoo:balanced:loner",
+      "seats": 0.2325,
+      "fair_share": 0.058125,
+      "wins": 20,
+      "rate": 0.05,
+      "ci_low": 0.0325971756266401,
+      "ci_high": 0.07596420091307252
+    },
+    {
+      "level": "zoo:wood-brick:fair",
+      "seats": 0.265,
+      "fair_share": 0.06625,
+      "wins": 25,
+      "rate": 0.0625,
+      "ci_low": 0.04268884343581125,
+      "ci_high": 0.09063471708890933
+    },
+    {
+      "level": "zoo:wood-brick:loner",
+      "seats": 0.26,
+      "fair_share": 0.065,
+      "wins": 25,
+      "rate": 0.0625,
+      "ci_low": 0.04268884343581125,
+      "ci_high": 0.09063471708890933
+    }
+  ],
+  "by_archetype": [
+    {
+      "level": "wood-brick",
+      "seats": 1.1125,
+      "fair_share": 0.278125,
+      "wins": 105,
+      "rate": 0.2625,
+      "ci_low": 0.2217860978907582,
+      "ci_high": 0.30773240639409016
+    },
+    {
+      "level": "port",
+      "seats": 0.97,
+      "fair_share": 0.2425,
+      "wins": 74,
+      "rate": 0.185,
+      "ci_low": 0.15000638716506282,
+      "ci_high": 0.225986576412736
+    },
+    {
+      "level": "ore-wheat",
+      "seats": 0.975,
+      "fair_share": 0.24375,
+      "wins": 117,
+      "rate": 0.2925,
+      "ci_low": 0.25006128808159916,
+      "ci_high": 0.3388864577672683
+    },
+    {
+      "level": "balanced",
+      "seats": 0.9425,
+      "fair_share": 0.235625,
+      "wins": 104,
+      "rate": 0.26,
+      "ci_low": 0.2194409481918117,
+      "ci_high": 0.30512511929603503
+    }
+  ],
+  "by_personality": [
+    {
+      "level": "wary",
+      "seats": 0.975,
+      "fair_share": 0.24375,
+      "wins": 109,
+      "rate": 0.2725,
+      "ci_low": 0.23118418800549204,
+      "ci_high": 0.3181440634673627
+    },
+    {
+      "level": "loner",
+      "seats": 0.965,
+      "fair_share": 0.24125,
+      "wins": 88,
+      "rate": 0.22,
+      "ci_low": 0.18217324955825856,
+      "ci_high": 0.26315382917756264
+    },
+    {
+      "level": "fair",
+      "seats": 0.95,
+      "fair_share": 0.2375,
+      "wins": 106,
+      "rate": 0.265,
+      "ci_low": 0.22413301235879635,
+      "ci_high": 0.31033792872305355
+    },
+    {
+      "level": "friendly",
+      "seats": 1.11,
+      "fair_share": 0.2775,
+      "wins": 97,
+      "rate": 0.2425,
+      "ci_low": 0.2030757339434459,
+      "ci_high": 0.28682327596538965
+    }
+  ],
+  "by_seat": [
+    {
+      "wins": 111,
+      "rate": 0.2775,
+      "ci_low": 0.23589351571381517,
+      "ci_high": 0.3233396093530428
+    },
+    {
+      "wins": 96,
+      "rate": 0.24,
+      "ci_low": 0.20074532480639665,
+      "ci_high": 0.28420124830543736
+    },
+    {
+      "wins": 95,
+      "rate": 0.2375,
+      "ci_low": 0.19841684319432581,
+      "ci_high": 0.2815772931205065
+    },
+    {
+      "wins": 98,
+      "rate": 0.245,
+      "ci_low": 0.20540805053884156,
+      "ci_high": 0.28944339616699555
+    }
+  ],
+  "mean_turns": 74.575,
+  "mean_duration_ns": 45673073137,
+  "max_duration_ns": 90622534673,
+  "mean_refused": 91.68,
+  "wall_ns": 589013354313
+}

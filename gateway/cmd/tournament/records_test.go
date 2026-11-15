@@ -94,3 +94,29 @@ func TestKeepRecordFailsWithoutSaving(t *testing.T) {
 		t.Errorf("left %d files", len(entries))
 	}
 }
+
+func TestKeepRecordDescribesZooBots(t *testing.T) {
+	dir := t.TempDir()
+	cfg := config{api: backend(t).URL, records: dir}
+
+	if err := keepRecord(context.Background(), cfg, 1, "r1", []string{"zoo:port:wary:9007199254740991", "hard"}); err != nil {
+		t.Fatal(err)
+	}
+
+	players := readGzipJSON(t, filepath.Join(dir, "game-00001-r1.json.gz"))["players"].([]any)
+	zoo := players[0].(map[string]any)
+	style, ok := zoo["bot_style"].(map[string]any)
+	if zoo["bot_level"] != "zoo" || !ok || style["archetype"] != "port" || style["personality"] != "wary" {
+		t.Fatalf("seat 0 = %v", zoo)
+	}
+	// The largest seed the tournament draws survives a JSON number
+	if style["seed"] != json.Number("9007199254740991") {
+		t.Errorf("seed = %v", style["seed"])
+	}
+	if style["weights"].(map[string]any)["road_reach"] != json.Number("2") || style["trading"].(map[string]any)["embargo"] != json.Number("2") {
+		t.Errorf("weights or trading missing: %v", style)
+	}
+	if _, ok := players[1].(map[string]any)["bot_style"]; ok {
+		t.Errorf("hard got a zoo style: %v", players[1])
+	}
+}

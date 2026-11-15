@@ -162,7 +162,7 @@ func (h *plan) trade() *Action {
 				}
 			}
 		}
-		if made := h.offersMade(); made < offersPerTurn && made < len(offers) {
+		if made := h.offersMade(); made < h.Offers && made < len(offers) {
 			offer := offers[made]
 			return &Action{"offer_trade", map[string]any{
 				"give": map[string]int{offer[0]: 1}, "get": map[string]int{offer[1]: 1},
@@ -203,10 +203,33 @@ func (p player) followOffer(offer *Offer) *Action {
 	if len(offer.AcceptedSeats)+len(offer.DeclinedSeats) < len(p.Public.Players)-1 {
 		return nil
 	}
-	if len(offer.AcceptedSeats) > 0 && missing(offer.Give, p.Private.Resources) == 0 {
-		return &Action{"confirm_trade", map[string]any{"partner_seat": offer.AcceptedSeats[0]}}
+	if missing(offer.Give, p.Private.Resources) == 0 {
+		for _, seat := range offer.AcceptedSeats {
+			if p.Embargo < 2 || !p.embargoed(seat) {
+				return &Action{"confirm_trade", map[string]any{"partner_seat": seat}}
+			}
+		}
 	}
 	return &Action{"cancel_trade", nil}
+}
+
+// embargoed says if a wary bot keeps its cards from this player: the
+// leader, anyone close to winning or anyone ahead of the bot itself.
+func (p player) embargoed(seat int) bool {
+	other := p.Public.Players[seat]
+	return p.leads(seat) || other.VictoryPoints+2 >= p.victoryPoints() ||
+		other.VictoryPoints > p.Public.Players[p.Private.Seat].VictoryPoints
+}
+
+// leads says if this player has more points than everyone else.
+func (p player) leads(seat int) bool {
+	points := p.Public.Players[seat].VictoryPoints
+	for _, player := range p.Public.Players {
+		if player.Seat != seat && player.VictoryPoints >= points {
+			return false
+		}
+	}
+	return true
 }
 
 // shed spends cards before ending a turn with more than a 7 would leave.
@@ -341,16 +364,13 @@ func (p player) hardAnswer() *Action {
 		return nil
 	}
 	hand := p.Private.Resources
-	accept := missing(offer.Get, hand) == 0
+	accept := p.Accepts && missing(offer.Get, hand) == 0
 
 	proposer := p.Public.Players[offer.ProposerSeat]
-	leads := true
-	for _, player := range p.Public.Players {
-		if player.Seat != proposer.Seat && player.VictoryPoints >= proposer.VictoryPoints {
-			leads = false
-		}
-	}
-	if leads || proposer.VictoryPoints+2 >= p.victoryPoints() {
+	switch {
+	case p.Embargo >= 2 && p.embargoed(proposer.Seat):
+		accept = false
+	case p.Embargo >= 1 && (p.leads(proposer.Seat) || proposer.VictoryPoints+2 >= p.victoryPoints()):
 		accept = false
 	}
 	if accept {
@@ -359,7 +379,8 @@ func (p player) hardAnswer() *Action {
 		for resource, amount := range offer.Give {
 			after[resource] += amount
 		}
-		accept = missing(h.goal.cost, after) < missing(h.goal.cost, hand)
+		before, then := missing(h.goal.cost, hand), missing(h.goal.cost, after)
+		accept = then < before || (p.Neutral && then == before)
 	}
 	return &Action{"respond_trade", map[string]any{"accept": accept}}
 }

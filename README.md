@@ -39,6 +39,9 @@ Bots play at three levels, chosen by the host for each bot. In 400 games against
 bots an easy bot won 10% of the time and a hard bot 71.5%
 ([docs/benchmarks.md](docs/benchmarks.md#bot-tournament)). The hard bot saves for a goal,
 plans its roads toward the best free spot and offers trades to the other players.
+For tournaments there is also a zoo of hard bots with sixteen styles (what they build toward,
+how they trade) and every weight shaken per game, to produce varied games for the analysis
+engine ([docs/bot-zoo.md](docs/bot-zoo.md)).
 If a player leaves, anyone can hand their seat to a bot, and they can take it back by name.
 
 After each roll the board lights up the tiles that produced and shows who got how many cards.

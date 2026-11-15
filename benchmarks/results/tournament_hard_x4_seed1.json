@@ -1,0 +1,54 @@
+{
+  "levels": [
+    "hard",
+    "hard",
+    "hard",
+    "hard"
+  ],
+  "games": 200,
+  "finished": 200,
+  "timed_out": 0,
+  "failed": 0,
+  "by_level": [
+    {
+      "level": "hard",
+      "seats": 4,
+      "fair_share": 1,
+      "wins": 200,
+      "rate": 1,
+      "ci_low": 0.9811539940816791,
+      "ci_high": 1
+    }
+  ],
+  "by_seat": [
+    {
+      "wins": 56,
+      "rate": 0.28,
+      "ci_low": 0.22236792842635128,
+      "ci_high": 0.34592431417771
+    },
+    {
+      "wins": 49,
+      "rate": 0.245,
+      "ci_low": 0.19056777914685893,
+      "ci_high": 0.3090436838714848
+    },
+    {
+      "wins": 40,
+      "rate": 0.2,
+      "ci_low": 0.15045120743928825,
+      "ci_high": 0.26085639611170436
+    },
+    {
+      "wins": 55,
+      "rate": 0.275,
+      "ci_low": 0.21779604313809775,
+      "ci_high": 0.3406846595251467
+    }
+  ],
+  "mean_turns": 75.995,
+  "mean_duration_ns": 62963338651,
+  "max_duration_ns": 98424443974,
+  "mean_refused": 171.525,
+  "wall_ns": 430296141346
+}

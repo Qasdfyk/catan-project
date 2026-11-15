@@ -104,7 +104,8 @@ it opens each room through the REST API and runs every seat in one process. The 
 one seat per game, so no level always plays first. The report, with the win rate of each
 level and seat and a 95% Wilson interval, goes to `benchmarks/results/tournament_<name>.txt`.
 `-record file.jsonl` also appends every decision and result as training data, and
-`-records DIR` saves the full [game record](game-record.md) of every finished game.
+`-records DIR` saves the full [game record](game-record.md) of every finished game. The level
+`zoo` seats a different [zoo bot](bot-zoo.md) every game; its results are in that document.
 
     benchmarks/tournament.sh easy_vs_medium -games 400 -parallel 64 -levels easy,medium,medium,medium
 

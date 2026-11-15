@@ -39,6 +39,9 @@ type style struct {
 	offers bool
 	// longestRoad builds roads to take the Longest Road when it is close
 	longestRoad bool
+	// weights and personality tune the hard heuristics; the zoo changes them
+	weights
+	personality
 }
 
 var styles = map[string]style{
@@ -47,6 +50,7 @@ var styles = map[string]style{
 	"hard": {
 		spotChoices: 1, defensiveKnight: true, cardChance: 1,
 		planner: true, spots: true, leader: true, offers: true, longestRoad: true,
+		weights: archetypes["balanced"], personality: personalities["fair"],
 	},
 }
 
@@ -71,6 +75,9 @@ func Decide(view View, fallback bool, level string, rng *rand.Rand) *Action {
 		return nil
 	}
 	look, ok := styles[level]
+	if z, isZoo := ParseZoo(level); isZoo {
+		look, ok = zooStyle(z), true
+	}
 	if !ok {
 		look = styles[DefaultLevel]
 	}

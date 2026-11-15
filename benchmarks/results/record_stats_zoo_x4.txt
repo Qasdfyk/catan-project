@@ -1,0 +1,26 @@
+400 games, 81.6 turns on average
+
+label       seats     win  points  setup ore+wheat  wood+brick  cities  settl.   roads     dev  trades    port
+balanced      377   27.6%     7.6            40.9%       39.2%    2.29    1.82     6.7     2.6     5.0   70.6%
+ore-wheat     390   30.0%     7.7            53.6%       25.3%    2.51    0.73     4.8     5.3     5.3   50.0%
+port          388   19.1%     6.9            38.7%       38.8%    2.04    1.58     5.8     2.6     4.6   93.0%
+wood-brick    445   23.6%     7.2            27.2%       55.4%    1.46    3.19     8.1     1.1     5.1   75.7%
+
+trading    seats    win  offers  trades   bank
+fair         380  27.9%    19.4     5.2    4.4
+friendly     444  21.8%    19.3    10.8    4.2
+loner        386  22.8%     0.0     0.0    6.7
+wary         390  27.9%    11.7     3.3    5.1
+
+head to head: how often the row finished above the column
+            balanced  ore-wheat    port  wood-brick
+balanced           —      42.0%   64.3%       55.9%
+ore-wheat      58.0%          —   64.4%       57.5%
+port           35.7%      35.6%       —       46.2%
+wood-brick     44.1%      42.5%   53.8%           —
+
+winners' points: settlements 18.5%, cities 55.8%, vp_cards 8.8%, longest_road 10.7%, largest_army 6.2%
+winners holding the bonus cards: road and army 13, road 203, army 112, neither 72
+entropy of that mix: 1.62 bits (0 = always the same, 2 = all four alike)
+spread between seats (standard deviation): setup_ore_wheat 0.20, setup_wood_brick 0.20, cities 1.19, settlements 1.74, roads 2.67, dev_cards 3.39, trades 5.27, port 0.45
+share of variance explained by the label (eta²): setup_ore_wheat 0.23, setup_wood_brick 0.30, cities 0.11, settlements 0.27, roads 0.22, dev_cards 0.20, trades 0.00, port 0.11
