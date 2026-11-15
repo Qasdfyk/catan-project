@@ -84,3 +84,78 @@ func TestSummarizeCountsWinsPerLevelAndSeat(t *testing.T) {
 		t.Fatalf("failure missing from the report:\n%s", out.String())
 	}
 }
+
+func TestDrawZooGivesEachZooSeatItsOwnRepeatableBot(t *testing.T) {
+	levels := []string{"zoo", "hard", "zoo", "zoo"}
+	first := drawZoo(levels, 1, 3)
+	if !slices.Equal(first, drawZoo(levels, 1, 3)) {
+		t.Fatalf("not repeatable: %v", first)
+	}
+	if first[1] != "hard" || first[0] == first[2] || first[2] == first[3] {
+		t.Fatalf("unexpected seats: %v", first)
+	}
+	if slices.Equal(first, drawZoo(levels, 1, 4)) || slices.Equal(first, drawZoo(levels, 2, 3)) {
+		t.Fatalf("another game or seed drew the same bots: %v", first)
+	}
+	if levels[0] != "zoo" {
+		t.Fatal("drawZoo changed its input")
+	}
+
+	// Over many games every archetype and personality sits down
+	seen := map[string]bool{}
+	for game := range 200 {
+		for _, level := range drawZoo([]string{"zoo"}, 1, game) {
+			seen[withoutSeed(level)] = true
+		}
+	}
+	if len(seen) != 16 {
+		t.Fatalf("drew %d of the 16 kinds of zoo bot", len(seen))
+	}
+}
+
+func TestSummarizeGroupsZooBots(t *testing.T) {
+	levels := []string{"zoo", "hard"}
+	results := []result{
+		{Levels: []string{"zoo:port:wary:5", "hard"}, Winner: 0},
+		{Levels: []string{"hard", "zoo:port:fair:6"}, Winner: 1},
+		{Levels: []string{"zoo:ore-wheat:fair:7", "hard"}, Winner: 1},
+		{Levels: []string{"zoo:port:wary:8", "hard"}, Winner: -1, Error: errTimeout},
+	}
+
+	s := summarize(levels, results, time.Second)
+
+	byName := func(groups []levelStats) map[string]levelStats {
+		named := map[string]levelStats{}
+		for _, g := range groups {
+			named[g.Level] = g
+		}
+		return named
+	}
+	level, archetype, trading := byName(s.ByLevel), byName(s.ByArchetype), byName(s.ByPersonality)
+	if len(level) != 4 || level["hard"].Wins != 1 || level["hard"].Seats != 1 || level["zoo:port:wary"].Wins != 1 {
+		t.Fatalf("unexpected levels: %+v", s.ByLevel)
+	}
+	if len(archetype) != 2 || archetype["port"].Wins != 2 || !near(archetype["port"].Fair, 2.0/6) {
+		t.Fatalf("unexpected archetypes: %+v", s.ByArchetype)
+	}
+	if len(trading) != 2 || trading["fair"].Wins != 1 || trading["wary"].Wins != 1 {
+		t.Fatalf("unexpected personalities: %+v", s.ByPersonality)
+	}
+
+	var out strings.Builder
+	s.print(&out)
+	if !strings.Contains(out.String(), "zoo:ore-wheat:fair") || !strings.Contains(out.String(), "archetype") {
+		t.Fatalf("zoo missing from the report:\n%s", out.String())
+	}
+}
+
+func TestSeatNamesFitAndDiffer(t *testing.T) {
+	names := map[string]bool{}
+	for seat, level := range []string{"hard", "zoo:wood-brick:friendly:9007199254740991", "zoo:wood-brick:friendly:1", "easy"} {
+		name := seatName(level, seat)
+		if len(name) > 20 || names[name] {
+			t.Fatalf("seat %d: name %q too long or taken", seat, name)
+		}
+		names[name] = true
+	}
+}

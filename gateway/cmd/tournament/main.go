@@ -4,6 +4,10 @@
 //
 //	go run ./cmd/tournament -games 400 -levels easy,medium,medium,medium
 //	go run ./cmd/tournament -games 100 -levels hard,hard,hard,hard -records ../records
+//	go run ./cmd/tournament -games 400 -levels zoo,zoo,zoo,zoo -records ../records
+//
+// A seat of level "zoo" gets a new zoo bot every game: an archetype, a
+// trading personality and a seed for its weights, all drawn from -seed.
 package main
 
 import (
@@ -70,12 +74,22 @@ func openRoom(ctx context.Context, api string, levels []string) ([]session, erro
 		if seat > 0 {
 			url = fmt.Sprintf("%s/api/rooms/%s/join", api, seats[0].RoomID)
 		}
-		name := map[string]string{"name": fmt.Sprintf("%s %d", level, seat)}
+		name := map[string]string{"name": seatName(level, seat)}
 		if err := post(ctx, url, name, &seats[seat]); err != nil {
 			return nil, err
 		}
 	}
 	return seats, nil
+}
+
+// seatName is the player's name: the level and the seat, which keeps names
+// apart, since joining under a taken name takes that seat back. A zoo bot
+// goes by its archetype alone, to fit the 20 characters a name may have.
+func seatName(level string, seat int) string {
+	if zoo, ok := bot.ParseZoo(level); ok {
+		level = zoo.Archetype
+	}
+	return fmt.Sprintf("%s %d", level, seat)
 }
 
 // startGame connects as the host just long enough to start the game.
@@ -156,7 +170,7 @@ func (w *watch) refuse(string) {
 }
 
 func playGame(ctx context.Context, cfg config, game int) result {
-	levels := seatLevels(cfg.levels, game)
+	levels := drawZoo(seatLevels(cfg.levels, game), cfg.seed, game)
 	r := result{Game: game, Levels: levels, Winner: -1}
 	started := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, cfg.timeout)
@@ -253,7 +267,7 @@ func main() {
 	api := flag.String("api", "http://127.0.0.1:8000", "backend URL")
 	ws := flag.String("ws", "ws://127.0.0.1:8080/ws", "gateway URL")
 	games := flag.Int("games", 20, "games to play")
-	levelList := flag.String("levels", "medium,medium,medium,medium", "level of each seat, rotated between games")
+	levelList := flag.String("levels", "medium,medium,medium,medium", "level of each seat, rotated between games: easy, medium, hard, zoo or one zoo bot such as zoo:port:wary")
 	parallel := flag.Int("parallel", 32, "games played at once")
 	timeout := flag.Duration("timeout", 5*time.Minute, "time limit of one game, after which it counts as no result")
 	// The gateway takes 10 messages a second per connection. Without a pause a
@@ -270,7 +284,7 @@ func main() {
 		log.Fatalf("-levels needs 2 to 4 seats, got %d", len(levels))
 	}
 	for _, level := range levels {
-		if !slices.Contains([]string{"easy", "medium", "hard"}, level) {
+		if _, zoo := bot.ParseZoo(level); !zoo && !slices.Contains([]string{"easy", "medium", "hard", "zoo"}, level) {
 			log.Fatalf("unknown level %q", level)
 		}
 	}

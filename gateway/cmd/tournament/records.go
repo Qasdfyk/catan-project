@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+
+	"catan/gateway/internal/bot"
 )
 
 // fetchRecord downloads the record the backend saved when the game ended
@@ -50,6 +52,10 @@ func markTournament(record map[string]any, levels []string) error {
 		}
 		player["kind"] = "bot"
 		player["bot_level"] = levels[seat]
+		if zoo, ok := bot.ParseZoo(levels[seat]); ok {
+			player["bot_level"] = "zoo"
+			player["bot_style"] = zoo
+		}
 	}
 	record["source"] = "tournament"
 	return nil

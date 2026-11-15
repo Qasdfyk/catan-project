@@ -31,7 +31,8 @@ func waitingForAnswers(view View) bool {
 type Seat struct {
 	RoomID string `json:"room_id"`
 	Token  string `json:"token"`
-	// Level is "easy", "medium" or "hard"; empty means DefaultLevel
+	// Level is "easy", "medium", "hard" or a zoo bot (see ParseZoo); empty
+	// means DefaultLevel
 	Level string `json:"level"`
 }
 

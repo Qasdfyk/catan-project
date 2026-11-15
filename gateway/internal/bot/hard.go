@@ -17,8 +17,6 @@ const (
 	maxRoads       = 15
 	// cardsOfEach is how many cards of each resource the game has
 	cardsOfEach = 19
-	// offersPerTurn caps the trades the bot proposes to players in one turn
-	offersPerTurn = 2
 	// targetReach is how many roads ahead the bot looks for a settlement spot
 	targetReach = 3
 	// devCardValue is what a development card is worth against a building's 1 + production
@@ -112,9 +110,9 @@ func (h *plan) spotValue(at corner) float64 {
 		}
 		pip := float64(pips(tile.Number))
 		have := h.production[tile.Resource]
-		value += pip * h.scarcity[tile.Resource] * (1 - min(0.4, have/25))
+		value += pip * h.scarcity[tile.Resource] * h.Resource[tile.Resource] * (1 - min(0.4, have/25)*h.Variety)
 		if have == 0 && here[tile.Resource] == 0 {
-			value += 2
+			value += 2 * h.Variety
 		}
 		here[tile.Resource] += pip
 	}
@@ -122,12 +120,12 @@ func (h *plan) spotValue(at corner) float64 {
 	case port == "":
 	case port == "3:1":
 		if slices.Max(slices.Collect(maps.Values(h.Private.TradeRates))) > 3 {
-			value += 1.5
+			value += 1.5 * h.Port
 		}
 	default:
 		resource := strings.TrimSuffix(port, "_2:1")
 		if h.Private.TradeRates[resource] > 2 {
-			value += 0.25 * (h.production[resource] + here[resource])
+			value += 0.25 * h.Port * (h.production[resource] + here[resource])
 		}
 	}
 	return value
@@ -195,7 +193,7 @@ func (h *plan) turnsFor(cost map[string]int) float64 {
 
 func (h *plan) chooseGoal() goal {
 	// A card is worth about a third of a point; a building is a point and more cards
-	best, bestScore := goal{"dev_card", devCardCost}, devCardValue/(1+h.turnsFor(devCardCost))
+	best, bestScore := goal{"dev_card", devCardCost}, devCardValue*h.DevCard/(1+h.turnsFor(devCardCost))
 	consider := func(name string, cost map[string]int, value float64) {
 		if score := value / (1 + h.turnsFor(cost)); score > bestScore {
 			best, bestScore = goal{name, cost}, score
@@ -208,14 +206,14 @@ func (h *plan) chooseGoal() goal {
 				top = max(top, h.spotValue(at))
 			}
 		}
-		consider("city", cityCost, 1+top/10)
+		consider("city", cityCost, (1+top/10)*h.City)
 	}
 	if h.hasTarget {
 		cost := maps.Clone(settlementCost)
 		for resource, amount := range roadCost {
 			cost[resource] += amount * h.targetDist
 		}
-		consider("settlement", cost, 1+h.spotValue(h.target)/10)
+		consider("settlement", cost, (1+h.spotValue(h.target)/10)*h.Settlement)
 	}
 	return best
 }
@@ -338,8 +336,8 @@ func (h *plan) longestRoadEdge(options []Position) (Position, bool) {
 			holder = max(holder, player.RoadLength)
 		}
 	}
-	// Close means two roads or fewer from taking it
-	if mine+2 <= holder {
+	// Close means RoadReach roads or fewer from taking it
+	if mine+h.RoadReach <= holder {
 		return Position{}, false
 	}
 	var best Position

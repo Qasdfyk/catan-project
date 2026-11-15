@@ -32,7 +32,8 @@ cd backend
   a day. Anyone with the room ID can download it.
 - **Bot tournaments.** `go run ./cmd/tournament -records DIR` downloads the record of each
   finished game, marks every seat as a bot of its level, sets `"source": "tournament"` and saves
-  it as `DIR/game-NNNNN-{room}.json.gz`. The older `-record` JSON lines hold only what each bot
+  it as `DIR/game-NNNNN-{room}.json.gz`. A seat played by a [zoo bot](bot-zoo.md) gets
+  `"bot_level": "zoo"` and a `bot_style` that describes it fully. The older `-record` JSON lines hold only what each bot
   saw, without other hands or the deck, so they are not converted.
 - **Simulations.** `simulate` above, between random players.
 
@@ -99,7 +100,8 @@ Lists are shortened above: a standard board has 19 tiles and 9 ports, and the de
 | `started_at`, `finished_at` | UTC, ISO 8601. `finished_at` and `result` are `null` until the game ends. |
 | `settings` | The house rules of the game, as in `GameSettings`. |
 | `first_seat` | Who plays first, drawn at random when the game starts. Setup goes `first_seat`, then up the seat numbers round the table and back in snake order, and `first_seat` takes the first regular turn. Missing in older records, which always started at `0`. |
-| `players` | One entry per seat, in seat order. Colors follow seat order: red, blue, white, orange. `kind` is `human` or `bot`; `bot_level` is `easy`, `medium`, `hard`, `random` or `null`. |
+| `players` | One entry per seat, in seat order. Colors follow seat order: red, blue, white, orange. `kind` is `human` or `bot`; `bot_level` is `easy`, `medium`, `hard`, `zoo`, `random` or `null`. |
+| `players[].bot_style` | Only for `zoo`: `archetype`, `personality`, the `seed` that shook its weights (below 2^53, so exact in any JSON reader), and the resulting `weights` and `trading`, so the record says how the bot played without the bot's code. See [bot-zoo.md](bot-zoo.md). |
 | `board.tiles` | Every land tile: its hex, `resource` (`wood`, `brick`, `sheep`, `wheat`, `ore`, `desert`) and `number` (`null` on the desert). |
 | `board.ports` | Every port: `type` (`3:1` or `2:1` with a resource) and the two vertices that use it. |
 | `board.robber` | Where the robber starts: the desert. |
