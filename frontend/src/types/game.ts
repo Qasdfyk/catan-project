@@ -56,7 +56,7 @@ export type DevCard = 'knight' | 'victory_point' | 'road_building' | 'year_of_pl
 
 export type Cards = Partial<Record<Resource, number>>;
 
-export type BotLevel = 'easy' | 'medium' | 'hard';
+export type BotLevel = 'easy' | 'medium' | 'hard' | 'expert';
 
 export interface LobbyPlayer {
   seat: number;

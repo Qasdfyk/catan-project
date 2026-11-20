@@ -69,9 +69,21 @@ to have the gateway track seat changes, which is more code to protect a rare lob
 ## Bots are ordinary clients
 
 A bot connects to the gateway like a browser and picks from the moves the server lists as
-legal. It has its own heuristics, but no rule is written twice, and a bot cannot cheat because
-it only sees its own view. If the server refuses a move, a fallback does only what cannot fail,
-which keeps a bug in the strategy from stopping a game.
+legal. It has its own heuristics, but no rule is written twice, and the easy, medium and hard
+bots cannot cheat because they only see their own view. If the server refuses a move, a
+fallback does only what cannot fail, which keeps a bug in the strategy from stopping a game.
+
+The expert bot is the exception, by design. It searches its moves in
+[catan-analysis-engine](https://github.com/Qasdfyk/catan-analysis-engine), which needs the
+history of the game to know what its seat has seen of the other hands. So on its move it reads
+the record of the running game from `POST /internal/rooms/{id}/record` (internal key only) and
+hands it to `catan_expert`, a separate C++ program the bots service keeps running and talks to
+over stdin and stdout. The record holds hidden cards; the engine reads only what the seat
+could know, which its tests check (a search does not change when only hidden cards do). The
+hard bot decides first whether the seat has a move at all, and plays instead whenever the
+engine fails or is not installed, so an expert seat never stalls a game. Details:
+[docs/expert.md](https://github.com/Qasdfyk/catan-analysis-engine/blob/main/docs/expert.md)
+in the engine.
 
 The backend asks for a bot by adding an entry to the Redis stream `catan:bots`, which the bot
 service reads as the consumer group `bots`. An entry stays pending while its bot plays and is

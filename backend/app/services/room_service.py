@@ -177,6 +177,13 @@ class RoomService:
 
             await self._commit(room, game)
 
+    async def get_live_record(self, room_id: str) -> Dict[str, Any]:
+        """The record of a running game so far: the header and every event."""
+        record = await self.redis.load_record(room_id)
+        if record is None:
+            raise RoomNotFound()
+        return record
+
     async def get_record(self, room_id: str) -> Dict[str, Any]:
         """The record of a finished game. It outlives the room, which Redis drops after a day."""
         try:
@@ -279,7 +286,7 @@ class RoomService:
     def _bot_level(payload: Dict[str, Any]) -> str:
         level = payload.get("level", DEFAULT_BOT_LEVEL)
         if level not in BOT_LEVELS:
-            raise RoomError("Choose easy, medium or hard.")
+            raise RoomError("Choose easy, medium, hard or expert.")
         return level
 
     @staticmethod

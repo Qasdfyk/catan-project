@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -53,9 +54,18 @@ func main() {
 	backend := server.NewHTTPBackend(env("BACKEND_URL", "http://localhost:8000"), env("INTERNAL_API_KEY", "dev-internal-key"))
 	go runTurnTimer(ctx, time.Second, redisDueRooms(client), backend.Timeout)
 
+	// The expert level needs catan_expert from catan-analysis-engine, e.g.
+	// EXPERT_COMMAND="catan_expert --elites elites.json --time-ms 1000 --threads 4".
+	// Without it expert seats play as the hard bot.
+	expert := &bot.Expert{Command: strings.Fields(os.Getenv("EXPERT_COMMAND")), Record: backend.Record}
+	defer expert.Close()
+	if len(expert.Command) == 0 {
+		log.Printf("EXPERT_COMMAND is not set: expert bots play as hard")
+	}
+
 	queue := &summons{client: client, stream: botsStream, group: botsGroup, consumer: consumer}
 	seats := newSeats(ctx, queue, func(ctx context.Context, seat bot.Seat) {
-		bot.Play(ctx, url, seat, bot.Options{Delay: time.Duration(delayMs) * time.Millisecond})
+		bot.Play(ctx, url, seat, bot.Options{Delay: time.Duration(delayMs) * time.Millisecond, Expert: expert})
 	})
 	if err := seats.run(ctx); err != nil {
 		log.Fatalf("bots: %v", err)

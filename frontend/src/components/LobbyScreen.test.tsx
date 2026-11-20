@@ -47,6 +47,7 @@ describe('LobbyScreen', () => {
         expect(easy).toContain('<option value="easy" selected="">Easy</option>');
         expect(easy).toContain('<option value="medium">Medium</option>');
         expect(easy).toContain('<option value="hard">Hard</option>');
+        expect(easy).toContain('<option value="expert">Expert</option>');
     });
 
     it('selects the level each bot has', () => {

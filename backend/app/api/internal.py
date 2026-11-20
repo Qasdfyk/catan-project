@@ -31,3 +31,11 @@ async def perform_action(room_id: str, body: ActionRequest, rooms: RoomService =
 @router.post("/rooms/{room_id}/timeout")
 async def time_out(room_id: str, rooms: RoomService = Depends(get_rooms)):
     return {"ok": True, "finished": await rooms.time_out(room_id)}
+
+
+@router.post("/rooms/{room_id}/record")
+async def live_record(room_id: str, rooms: RoomService = Depends(get_rooms)):
+    """The record of a running game so far, for the expert bot. It holds hidden
+    cards, so it never leaves the server: the engine reads only what the bot's
+    seat could know."""
+    return await rooms.get_live_record(room_id)

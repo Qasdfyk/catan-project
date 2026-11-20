@@ -3,7 +3,7 @@ import { botLabel, BOT_LEVELS } from './bots';
 
 describe('bots', () => {
     it('offers every level, weakest first', () => {
-        expect(BOT_LEVELS).toEqual(['easy', 'medium', 'hard']);
+        expect(BOT_LEVELS).toEqual(['easy', 'medium', 'hard', 'expert']);
     });
 
     it('names the level of a bot', () => {

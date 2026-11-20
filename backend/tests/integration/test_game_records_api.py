@@ -10,7 +10,7 @@ import pytest
 from app.main import app
 from app.services.game_record import fingerprint, replay
 from app.services.random_player import play_step
-from rooms_api import act, create_room, join, load_game, started_room
+from rooms_api import HEADERS, act, create_room, join, load_game, started_room
 
 
 async def play_to_the_end(client, room_id, tokens, seed=3):
@@ -217,3 +217,34 @@ async def test_parallel_downloads_save_once(client, monkeypatch):
     assert [r.status_code for r in responses] == [200] * 5
     assert len({r.text for r in responses}) == 1
     assert len(saves) == 1
+
+
+@pytest.mark.asyncio
+async def test_live_record_is_for_the_bots_service_only(client):
+    host, guest = await started_room(client)
+    room_id = host["room_id"]
+    tokens = [host["token"], guest["token"]]
+    rng = random.Random(11)
+    for _ in range(40):
+        game = await load_game(room_id)
+        play_step(game, rng)
+        for event in game.take_events():
+            await act(client, room_id, tokens[event["seat"]], event["action"], event["payload"])
+
+    refused = await client.post(f"/internal/rooms/{room_id}/record")
+    assert refused.status_code == 403
+
+    response = await client.post(f"/internal/rooms/{room_id}/record", headers=HEADERS)
+    assert response.status_code == 200
+    live = response.json()
+    assert live == await app.state.redis.load_record(room_id)
+    assert len(live["events"]) >= 40
+    # The game so far replays to the stored state, so the expert bot starts
+    # from exactly the game being played
+    assert fingerprint(replay(live)) == fingerprint(await load_game(room_id))
+
+
+@pytest.mark.asyncio
+async def test_live_record_of_an_unknown_room_is_not_found(client):
+    response = await client.post("/internal/rooms/nope1234/record", headers=HEADERS)
+    assert response.status_code == 404

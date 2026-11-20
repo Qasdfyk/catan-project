@@ -31,8 +31,8 @@ func waitingForAnswers(view View) bool {
 type Seat struct {
 	RoomID string `json:"room_id"`
 	Token  string `json:"token"`
-	// Level is "easy", "medium", "hard" or a zoo bot (see ParseZoo); empty
-	// means DefaultLevel
+	// Level is "easy", "medium", "hard", "expert" or a zoo bot (see ParseZoo);
+	// empty means DefaultLevel
 	Level string `json:"level"`
 }
 
@@ -59,6 +59,8 @@ type Options struct {
 	OnAction func(View, Action)
 	// OnRefused is told when the server refuses a move
 	OnRefused func(message string)
+	// Expert plays the seats of level "expert"; without it they play as hard
+	Expert *Expert
 }
 
 // Play keeps one bot in its seat until the game ends, reconnecting if needed.
@@ -136,6 +138,14 @@ func playConnection(ctx context.Context, url string, seat Seat, options Options)
 			return errSeatGone
 		}
 
+		// The expert searches only when its seat has a move: the hard bot's
+		// cheap answer tells (Decide plays "expert" as hard).
+		choose := func(view View) *Action {
+			if seat.Level == ExpertLevel {
+				return options.Expert.decide(ctx, seat.RoomID, view, fallback, options.Rand)
+			}
+			return Decide(view, fallback, seat.Level, options.Rand)
+		}
 		action := Decide(view, fallback, seat.Level, options.Rand)
 		if action == nil {
 			if !waitingForAnswers(view) {
@@ -147,9 +157,16 @@ func playConnection(ctx context.Context, url string, seat Seat, options Options)
 		}
 		patience = nil
 
-		// Thinking time, so people can follow; a newer view replaces this one
+		// Thinking time, so people can follow; a newer view replaces this one.
+		// The expert's search counts toward it.
+		wait := options.Delay
+		if seat.Level == ExpertLevel {
+			started := time.Now()
+			action = choose(view)
+			wait = max(0, options.Delay-time.Since(started))
+		}
 		select {
-		case <-time.After(options.Delay):
+		case <-time.After(wait):
 		case <-ctx.Done():
 			return ctx.Err()
 		}
@@ -159,7 +176,7 @@ func playConnection(ctx context.Context, url string, seat Seat, options Options)
 			if view.Public.Status == "finished" {
 				return errSeatGone
 			}
-			if action = Decide(view, fallback, seat.Level, options.Rand); action == nil {
+			if action = choose(view); action == nil {
 				continue
 			}
 		default:

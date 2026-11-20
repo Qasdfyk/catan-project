@@ -1,6 +1,6 @@
 # Catan
 
-**The board game for 2–4 players in the browser, built like a real-time service.** Play with friends over an invite link or against bots at three levels. The rules live in one Python service; a Go gateway holds the WebSockets; Redis keeps the state and streams the events.
+**The board game for 2–4 players in the browser, built like a real-time service.** Play with friends over an invite link or against bots at four levels, the strongest of which searches its moves in a C++ engine. The rules live in one Python service; a Go gateway holds the WebSockets; Redis keeps the state and streams the events.
 
 ![Python](https://img.shields.io/badge/Python-FastAPI-3776AB?logo=python&logoColor=white)
 ![Go](https://img.shields.io/badge/Go-gateway%20%26%20bots-00ADD8?logo=go&logoColor=white)
@@ -35,10 +35,15 @@ runs out, the server makes the moves the rules require (rolling, discarding, mov
 and passes the turn. After a game the host can start a rematch, which moves every player to a
 new room with the same seats and rules.
 
-Bots play at three levels, chosen by the host for each bot. In 400 games against three medium
+Bots play at three levels, chosen by the host for each bot, and a fourth that searches. In 400 games against three medium
 bots an easy bot won 10% of the time and a hard bot 71.5%
 ([docs/benchmarks.md](docs/benchmarks.md#bot-tournament)). The hard bot saves for a goal,
 plans its roads toward the best free spot and offers trades to the other players.
+A fourth level, expert, is the hard bot with a search on top: for each decision it plays the
+game out many times from every move it could make, with the other hands drawn from what its
+seat has seen, and picks the move that won most. The search runs in
+[catan-analysis-engine](https://github.com/Qasdfyk/catan-analysis-engine) (C++); without it
+installed, expert plays as hard ([docs/design.md](docs/design.md#bots-are-ordinary-clients)).
 For tournaments there is also a zoo of hard bots with sixteen styles (what they build toward,
 how they trade) and every weight shaken per game, to produce varied games for the analysis
 engine ([docs/bot-zoo.md](docs/bot-zoo.md)).
