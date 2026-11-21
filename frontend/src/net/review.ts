@@ -54,7 +54,7 @@ export function openReview(
     if (!viewer) return false;
     // Only the analyzer's origin may read the record: if the tab navigates
     // somewhere else, the browser drops the message instead of delivering it.
-    const origin = new URL(base).origin;
+    const origin = base.replace(/\/$/, '');
     // Fetched once, while the analyzer loads.
     const record = load(recordUrl).then(async (response) => {
         if (!response.ok) throw new Error(`the server answered ${response.status}`);
