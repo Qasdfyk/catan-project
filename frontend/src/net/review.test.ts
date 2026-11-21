@@ -40,14 +40,14 @@ describe('openReview', () => {
 
     it('sends the record when the analyzer says it is ready, to its origin only', async () => {
         const { win, load, opened, posted, fetched, send } = setup();
-        expect(openReview('/api/rooms/r1/record', 'Game r1', { base: BASE, win, load })).toBe(true);
+        expect(openReview('/api/rooms/r1/record', { label: 'Game r1', seat: 2 }, { base: BASE, win, load })).toBe(true);
         expect(opened).toEqual([reviewLink(BASE)]);
         expect(fetched).toEqual(['/api/rooms/r1/record']);
         expect(posted).toEqual([]); // nothing before "ready"
 
         await send(READY);
         expect(posted).toEqual([{
-            message: { type: 'catan-review:record', version: 1, record: '{"format":"catan-game-record"}', label: 'Game r1' },
+            message: { type: 'catan-review:record', version: 1, record: '{"format":"catan-game-record"}', label: 'Game r1', seat: 2 },
             origin: ORIGIN,
         }]);
 
@@ -59,7 +59,7 @@ describe('openReview', () => {
 
     it('ignores other windows, other origins and other messages', async () => {
         const { win, load, posted, send } = setup();
-        openReview('/api/rooms/r1/record', 'Game r1', { base: BASE, win, load });
+        openReview('/api/rooms/r1/record', { label: 'Game r1', seat: 2 }, { base: BASE, win, load });
         await send(READY, { postMessage() {} });
         await send(READY, undefined, 'https://evil.example');
         await send({ type: 'catan-review:ready', version: 2 });
@@ -69,7 +69,7 @@ describe('openReview', () => {
 
     it('tells the analyzer when the record cannot be fetched', async () => {
         const { win, load, posted, send } = setup(async () => new Response('', { status: 409 }));
-        openReview('/api/rooms/r1/record', 'Game r1', { base: BASE, win, load });
+        openReview('/api/rooms/r1/record', { label: 'Game r1', seat: 2 }, { base: BASE, win, load });
         await send(READY);
         expect(posted[0].message).toEqual({ type: 'catan-review:error', version: 1, message: 'the server answered 409' });
     });
@@ -77,7 +77,7 @@ describe('openReview', () => {
     it('reports a blocked tab', () => {
         const { win, load, fetched, listeners } = setup();
         win.open = () => null;
-        expect(openReview('/api/rooms/r1/record', 'Game r1', { base: BASE, win, load })).toBe(false);
+        expect(openReview('/api/rooms/r1/record', { label: 'Game r1', seat: 2 }, { base: BASE, win, load })).toBe(false);
         expect(fetched).toEqual([]);
         expect(listeners).toEqual([]);
     });

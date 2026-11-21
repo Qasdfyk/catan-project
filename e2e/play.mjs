@@ -458,7 +458,7 @@ const STUB_ANALYZER = `<!doctype html><title>waiting</title><script>
 addEventListener('message', (e) => {
     if (e.source !== opener || e.data?.type !== 'catan-review:record') return;
     const record = JSON.parse(e.data.record);
-    document.title = ['got', record.format, record.result.winner_seat, e.data.label].join(' ');
+    document.title = ['got', record.format, record.result.winner_seat, e.data.seat, e.data.label].join(' ');
 });
 opener.postMessage({ type: 'catan-review:ready', version: 1 }, '*');
 </script>`;
@@ -472,9 +472,10 @@ const checkReview = async (context, page) => {
     assert.equal(analyzer.url(), `${ANALYZER}#/replay?from=opener`);
     await analyzer.waitForFunction(() => document.title.startsWith('got'));
     const roomId = new URL(page.url()).pathname.split('/').pop();
-    const [, format, winnerSeat, label] = (await analyzer.title()).split(' ', 4);
+    const [, format, winnerSeat, seat, label] = (await analyzer.title()).split(' ', 5);
     assert.equal(format, 'catan-game-record');
     assert.match(winnerSeat, /^[0-3]$/);
+    assert.equal(seat, '0', 'the review is not about the player who asked for it');
     assert.equal(label, 'Game');
     assert.ok((await analyzer.title()).endsWith(roomId), `the analyzer got the record of another room: ${await analyzer.title()}`);
     await analyzer.close();

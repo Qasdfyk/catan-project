@@ -72,7 +72,7 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
     const isMyTurn = game.current_seat === mine.seat && !game.is_game_over;
     const inMain = game.turn_phase === 'main_phase';
     const winner = game.winner_seat === null ? null : players[game.winner_seat];
-    const review = () => openReview(recordUrl(state.room_id), `Game ${state.room_id}`);
+    const review = () => openReview(recordUrl(state.room_id), { label: `Game ${state.room_id}`, seat: mine.seat });
     const prompt = turnPrompt(game, players, mine.seat, legal.must_discard);
 
     const targets = useMemo<BoardTargets>(() => {

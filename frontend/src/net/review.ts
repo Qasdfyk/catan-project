@@ -9,7 +9,7 @@
 //
 //   this tab:  window.open(analyzer + "#/replay?from=opener")
 //   analyzer -> this tab: {type: "catan-review:ready", version: 1}
-//   this tab -> analyzer: {type: "catan-review:record", version: 1, record, label}
+//   this tab -> analyzer: {type: "catan-review:record", version: 1, record, label, seat}
 //                      or {type: "catan-review:error", version: 1, message}
 
 /** The analyzer's page; VITE_REVIEW_URL points it at a local copy (http://localhost:5174/). */
@@ -31,6 +31,14 @@ export interface ReviewWindow {
 /** The analyzer's address that waits for a record from this tab. */
 export const reviewLink = (base = REVIEW_URL) => new URL('#/replay?from=opener', base).href;
 
+/** What the analyzer is told besides the record. */
+export interface ReviewOf {
+    /** Shown under the board: "Game r1". */
+    label: string;
+    /** The seat of the player asking: the review is about their decisions. */
+    seat: number;
+}
+
 /**
  * Opens the analyzer and sends it the record at `recordUrl` once it is ready.
  * Must run inside a click handler, or the browser blocks the new tab.
@@ -38,7 +46,7 @@ export const reviewLink = (base = REVIEW_URL) => new URL('#/replay?from=opener',
  */
 export function openReview(
     recordUrl: string,
-    label: string,
+    { label, seat }: ReviewOf,
     { base = REVIEW_URL, win = window as ReviewWindow, load = fetch as typeof fetch } = {},
 ): boolean {
     // Not "noopener": the analyzer needs window.opener to ask for the record.
@@ -59,7 +67,7 @@ export function openReview(
         const data = e.data as { type?: unknown; version?: unknown } | null;
         if (data?.type !== READY || data.version !== VERSION) return;
         record.then(
-            (text) => viewer.postMessage({ type: 'catan-review:record', version: VERSION, record: text, label }, origin),
+            (text) => viewer.postMessage({ type: 'catan-review:record', version: VERSION, record: text, label, seat }, origin),
             (error: Error) => viewer.postMessage({ type: 'catan-review:error', version: VERSION, message: error.message }, origin),
         );
     };
