@@ -65,6 +65,7 @@ services:
   bots:
     build:
       context: ./gateway
+      target: bots # with catan_expert, the engine of the expert level
     container_name: catan_bots
     command: ["bots"]
     restart: unless-stopped

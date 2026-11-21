@@ -5,6 +5,7 @@
 //	go run ./cmd/tournament -games 400 -levels easy,medium,medium,medium
 //	go run ./cmd/tournament -games 100 -levels hard,hard,hard,hard -records ../records
 //	go run ./cmd/tournament -games 400 -levels zoo,zoo,zoo,zoo -records ../records
+//	go run ./cmd/tournament -games 20 -levels expert,hard,hard,hard -expert "catan_expert --elites elites.json"
 //
 // A seat of level "zoo" gets a new zoo bot every game: an archetype, a
 // trading personality and a seed for its weights, all drawn from -seed.
@@ -29,12 +30,14 @@ import (
 	"github.com/coder/websocket"
 
 	"catan/gateway/internal/bot"
+	"catan/gateway/internal/server"
 )
 
 const errTimeout = "timed out"
 
 type config struct {
 	api, ws string
+	expert  *bot.Expert
 	levels  []string
 	timeout time.Duration
 	delay   time.Duration
@@ -193,6 +196,7 @@ func playGame(ctx context.Context, cfg config, game int) result {
 			Delay:     cfg.delay,
 			Rand:      rand.New(rand.NewPCG(cfg.seed, uint64(game*len(seats)+seat))),
 			OnRefused: w.refuse,
+			Expert:    cfg.expert,
 		}
 		if seat == 0 {
 			options.OnState = w.state
@@ -267,7 +271,7 @@ func main() {
 	api := flag.String("api", "http://127.0.0.1:8000", "backend URL")
 	ws := flag.String("ws", "ws://127.0.0.1:8080/ws", "gateway URL")
 	games := flag.Int("games", 20, "games to play")
-	levelList := flag.String("levels", "medium,medium,medium,medium", "level of each seat, rotated between games: easy, medium, hard, zoo or one zoo bot such as zoo:port:wary")
+	levelList := flag.String("levels", "medium,medium,medium,medium", "level of each seat, rotated between games: easy, medium, hard, expert, zoo or one zoo bot such as zoo:port:wary")
 	parallel := flag.Int("parallel", 32, "games played at once")
 	timeout := flag.Duration("timeout", 5*time.Minute, "time limit of one game, after which it counts as no result")
 	// The gateway takes 10 messages a second per connection. Without a pause a
@@ -277,6 +281,8 @@ func main() {
 	asJSON := flag.Bool("json", false, "print the summary as JSON")
 	recordPath := flag.String("record", "", "append every decision and result to this JSON lines file")
 	recordsDir := flag.String("records", "", "save the game record (docs/game-record.md) of every finished game in this directory")
+	expertCommand := flag.String("expert", "", "command of catan_expert (catan-analysis-engine) for expert seats; without it they play as hard")
+	internalKey := flag.String("internal-key", "dev-internal-key", "INTERNAL_API_KEY of the backend, for the records the expert reads")
 	flag.Parse()
 
 	levels := strings.Split(*levelList, ",")
@@ -284,11 +290,16 @@ func main() {
 		log.Fatalf("-levels needs 2 to 4 seats, got %d", len(levels))
 	}
 	for _, level := range levels {
-		if _, zoo := bot.ParseZoo(level); !zoo && !slices.Contains([]string{"easy", "medium", "hard", "zoo"}, level) {
+		if _, zoo := bot.ParseZoo(level); !zoo && !slices.Contains([]string{"easy", "medium", "hard", bot.ExpertLevel, "zoo"}, level) {
 			log.Fatalf("unknown level %q", level)
 		}
 	}
 	cfg := config{api: *api, ws: *ws, levels: levels, timeout: *timeout, delay: *delay, seed: *seed, records: *recordsDir}
+	if *expertCommand != "" {
+		backend := server.NewHTTPBackend(*api, *internalKey)
+		cfg.expert = &bot.Expert{Command: strings.Fields(*expertCommand), Record: backend.Record}
+		defer cfg.expert.Close()
+	}
 	if cfg.records != "" {
 		if err := os.MkdirAll(cfg.records, 0o755); err != nil {
 			log.Fatalf("records: %v", err)

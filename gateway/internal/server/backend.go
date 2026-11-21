@@ -77,6 +77,15 @@ func (b *HTTPBackend) Timeout(ctx context.Context, roomID string) error {
 	return b.post(ctx, roomID, "timeout", nil, nil)
 }
 
+// Record returns the record of a running game so far, for the expert bot
+// (docs/game-record.md). It holds what no single player sees, so only the
+// bots service may read it.
+func (b *HTTPBackend) Record(ctx context.Context, roomID string) (json.RawMessage, error) {
+	var record json.RawMessage
+	err := b.post(ctx, roomID, "record", nil, &record)
+	return record, err
+}
+
 func (b *HTTPBackend) post(ctx context.Context, roomID, path string, body any, out any) error {
 	var reader io.Reader
 	if body != nil {

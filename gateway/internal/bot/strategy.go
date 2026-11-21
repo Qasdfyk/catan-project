@@ -74,6 +74,11 @@ func Decide(view View, fallback bool, level string, rng *rand.Rand) *Action {
 	if game == nil || legal == nil || game.IsGameOver {
 		return nil
 	}
+	if level == ExpertLevel {
+		// The expert's own moves come from the engine (expert.go); here it is
+		// the hard bot, which also says whether the seat has a move at all.
+		level = "hard"
+	}
 	look, ok := styles[level]
 	if z, isZoo := ParseZoo(level); isZoo {
 		look, ok = zooStyle(z), true

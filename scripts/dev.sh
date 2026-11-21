@@ -5,6 +5,10 @@
 #
 # Needs redis-server, Go, Node and backend/.venv. Ports can be moved with
 # REDIS_PORT, BACKEND_PORT, GATEWAY_PORT and FRONTEND_PORT.
+#
+# Expert bots search with catan_expert from catan-analysis-engine. If that repo
+# is built next to this one (or CATAN_ENGINE points to it), they use it;
+# EXPERT_COMMAND overrides the whole command. Otherwise they play as hard.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -52,6 +56,12 @@ wait_for backend "http://localhost:$backend_port/health"
 PORT="$gateway_port" BACKEND_URL="http://localhost:$backend_port" "$bin/gateway" > "$logs/gateway.log" 2>&1 &
 pids+=($!)
 wait_for gateway "http://localhost:$gateway_port/health"
+
+engine="${CATAN_ENGINE:-$root/../catan-analysis-engine}"
+if [[ -z "${EXPERT_COMMAND:-}" && -x "$engine/build/release/tools/catan_expert" ]]; then
+    export EXPERT_COMMAND="$engine/build/release/tools/catan_expert --elites $engine/data/elites.json --time-ms 1000 --threads 4"
+fi
+echo "  expert bots: ${EXPERT_COMMAND:-play as hard (no catan_expert)}"
 
 GATEWAY_URL="ws://localhost:$gateway_port/ws" BACKEND_URL="http://localhost:$backend_port" "$bin/bots" > "$logs/bots.log" 2>&1 &
 pids+=($!)

@@ -379,7 +379,7 @@ async def test_summoned_bots_know_their_level(client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("level", ["expert", "", None, 2, ["easy"]])
+@pytest.mark.parametrize("level", ["grandmaster", "", None, 2, ["easy"]])
 async def test_bot_level_must_be_known(client, level):
     host = await create_room(client)
     await act(client, host["room_id"], host["token"], "add_bot")
@@ -389,7 +389,7 @@ async def test_bot_level_must_be_known(client, level):
 
     for response in (added, changed):
         assert response.status_code == 400
-        assert response.json()["detail"] == "Choose easy, medium or hard."
+        assert response.json()["detail"] == "Choose easy, medium, hard or expert."
     players = (await session(client, host["room_id"], host["token"]))["public"]["players"]
     assert [p["bot_level"] for p in players] == [None, "medium"]
 
