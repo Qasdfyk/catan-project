@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { recordUrl } from '../net/api';
+import { openReview } from '../net/review';
 import type { RoomConnection } from '../net/useRoom';
 import type { GameView, LegalMoves, Player, Position, PrivateState, PublicState } from '../types/game';
 import { Board, type BoardTargets } from './Board';
@@ -71,6 +72,7 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
     const isMyTurn = game.current_seat === mine.seat && !game.is_game_over;
     const inMain = game.turn_phase === 'main_phase';
     const winner = game.winner_seat === null ? null : players[game.winner_seat];
+    const review = () => openReview(recordUrl(state.room_id), { label: `Game ${state.room_id}`, seat: mine.seat });
     const prompt = turnPrompt(game, players, mine.seat, legal.must_discard);
 
     const targets = useMemo<BoardTargets>(() => {
@@ -136,6 +138,7 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
                     rematchError={rematchError}
                     actionError={room.error}
                     recordUrl={recordUrl(state.room_id)}
+                    onReview={review}
                     onRematch={() => send('rematch')}
                     onClose={() => setWinnerClosed(true)}
                 />
@@ -167,6 +170,7 @@ export const GameScreen = ({ state, mine, room, rematchError }: GameScreenProps)
                 {game.dice_roll !== null && game.dice.length === 2 && (
                     <Dice key={changes.rollCount} values={game.dice} total={game.dice_roll} rolling={changes.roll !== null} />
                 )}
+                {game.is_game_over && <button className="topbar-review" onClick={review}>Review this game ↗</button>}
                 {!room.connected && <span className="offline">Reconnecting…</span>}
             </header>
 

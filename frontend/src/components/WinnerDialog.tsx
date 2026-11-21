@@ -15,18 +15,21 @@ interface WinnerDialogProps {
     actionError: string | null;
     /** The whole game as a file, for the analyzer or for later. */
     recordUrl: string;
+    /** Opens the analyzer with this game; false when the browser blocked the tab. */
+    onReview: () => boolean;
     onRematch: () => void;
     onClose: () => void;
 }
 
 export const WinnerDialog = ({
-    winner, players, isHost, rematchStarted, rematchError, actionError, recordUrl, onRematch, onClose,
+    winner, players, isHost, rematchStarted, rematchError, actionError, recordUrl, onReview, onRematch, onClose,
 }: WinnerDialogProps) => {
     // The error on screen when the host asked; undefined until they do
     const [errorWhenRequested, setErrorWhenRequested] = useState<string | null | undefined>(undefined);
     const requested = awaitingRematch(errorWhenRequested, actionError);
     // Once answered, forget the request, so the same error coming back later can't block the button
     if (errorWhenRequested !== undefined && !requested) setErrorWhenRequested(undefined);
+    const [reviewBlocked, setReviewBlocked] = useState(false);
     const ranking = [...players].sort((a, b) => b.victory_points - a.victory_points);
 
     const rematch = () => {
@@ -47,6 +50,15 @@ export const WinnerDialog = ({
                         </li>
                     ))}
                 </ol>
+                <div className="review-offer">
+                    <span>Review this game?</span>
+                    <button className="primary" onClick={() => setReviewBlocked(!onReview())}>Open the review ↗</button>
+                </div>
+                {reviewBlocked && (
+                    <p className="form-error" role="alert">
+                        The browser blocked the new tab. Allow pop-ups for this page and try again.
+                    </p>
+                )}
                 {rematchError || actionError ? (
                     <p className="form-error" role="alert">{rematchError || actionError}</p>
                 ) : rematchStarted ? (

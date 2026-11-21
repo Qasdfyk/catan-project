@@ -33,6 +33,7 @@ const render = (
             rematchError={rematchError}
             actionError={actionError}
             recordUrl="/api/rooms/r1/record"
+            onReview={() => true}
             onRematch={() => {}}
             onClose={() => {}}
         />
@@ -45,6 +46,14 @@ describe('WinnerDialog', () => {
     it('offers the game record to everyone', () => {
         for (const isHost of [true, false]) {
             expect(render(isHost)).toContain('<a class="button" href="/api/rooms/r1/record" download="">Download game</a>');
+        }
+    });
+
+    it('offers everyone a review of the game', () => {
+        for (const isHost of [true, false]) {
+            const markup = render(isHost);
+            expect(markup).toContain('Review this game?');
+            expect(button(markup, 'Open the review ↗')).toContain('class="primary"');
         }
     });
 
