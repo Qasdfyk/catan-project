@@ -127,6 +127,8 @@ label.check input { width: auto; margin: 0; flex: none; }
      board at every roll. With box-sizing: border-box the height counts the border. */
   min-height: calc(30px + 2 * 8px + var(--topbar-border));
 }
+/* Shown after the game; small enough for the bar's height, so the board keeps its size */
+.topbar-review { padding: 3px 10px; font-size: 14px; white-space: nowrap; }
 /* Whose turn it is, what to do now and the time left, read together. */
 .turn-status { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
 .turn-player { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; white-space: nowrap; }
@@ -334,6 +336,11 @@ a.button:not(.primary):hover { background: var(--surface-2); }
 .overlay { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 16px; background: rgba(10, 30, 45, .6); }
 .ranking { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .ranking li { display: flex; align-items: center; gap: 8px; }
+/* The way to the analyzer, apart from the buttons about the next game */
+.review-offer {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px;
+}
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }

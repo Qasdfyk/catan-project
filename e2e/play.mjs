@@ -426,6 +426,7 @@ const main = async () => {
     assert.equal(boardHeights.size, 1, `the board changed its height during the game: ${[...boardHeights]}`);
     await shot(tabs[0], '06-game-over');
     await tabs[0].getByRole('dialog', { name: 'Game over' }).waitFor();
+    await checkReview(context, tabs[0]);
 
     // Every tab must agree on the result, and nobody can act any more
     for (const page of tabs) {
@@ -447,6 +448,36 @@ const main = async () => {
     for (const key of BOTS > 0 ? ['turns'] : ['turns', 'roads', 'trades', 'cardsBought']) {
         assert.ok(seen[key] > 0, `the game never reached: ${key}`);
     }
+};
+
+// "Review this game" opens the analyzer and hands it the record by postMessage.
+// The analyzer is a stand-in served here (no network): it says it is ready,
+// as the real one does, and shows in its title what it received.
+const ANALYZER = 'https://qasdfyk.github.io/catan-analysis-engine/';
+const STUB_ANALYZER = `<!doctype html><title>waiting</title><script>
+addEventListener('message', (e) => {
+    if (e.source !== opener || e.data?.type !== 'catan-review:record') return;
+    const record = JSON.parse(e.data.record);
+    document.title = ['got', record.format, record.result.winner_seat, e.data.label].join(' ');
+});
+opener.postMessage({ type: 'catan-review:ready', version: 1 }, '*');
+</script>`;
+
+const checkReview = async (context, page) => {
+    await context.route(`${ANALYZER}**`, (route) => route.fulfill({ contentType: 'text/html', body: STUB_ANALYZER }));
+    const [analyzer] = await Promise.all([
+        context.waitForEvent('page'),
+        page.getByRole('button', { name: 'Open the review ↗' }).click(),
+    ]);
+    assert.equal(analyzer.url(), `${ANALYZER}#/replay?from=opener`);
+    await analyzer.waitForFunction(() => document.title.startsWith('got'));
+    const roomId = new URL(page.url()).pathname.split('/').pop();
+    const [, format, winnerSeat, label] = (await analyzer.title()).split(' ', 4);
+    assert.equal(format, 'catan-game-record');
+    assert.match(winnerSeat, /^[0-3]$/);
+    assert.equal(label, 'Game');
+    assert.ok((await analyzer.title()).endsWith(roomId), `the analyzer got the record of another room: ${await analyzer.title()}`);
+    await analyzer.close();
 };
 
 main().catch((error) => {
