@@ -15,11 +15,8 @@ from typing import Any, Dict
 
 
 def is_person(entry: Dict[str, Any]) -> bool:
-    """
-    Whether a person sat in this seat. A seat a bot took over from a player who
-    left is still theirs: the bot only finished some of their turns.
-    """
-    return not entry.get("bot") or entry.get("replaced", False)
+    """Whether a person sits in this seat."""
+    return not entry.get("bot")
 
 
 def eligible(room: Dict[str, Any]) -> bool:
