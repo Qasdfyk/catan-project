@@ -41,6 +41,9 @@ if [ "${1:-}" = "--e2e" ]; then
     step end-to-end
     # Ports of their own, so a running scripts/dev.sh is not disturbed
     export REDIS_PORT=6390 BACKEND_PORT=8190 GATEWAY_PORT=8191 FRONTEND_PORT=5190 BOT_DELAY_MS=150
+    # The test player shares the game; its copy must not land among real human games
+    export HUMAN_RECORDS_DIR="$root/.logs/check/records-human"
+    rm -rf "$HUMAN_RECORDS_DIR"
     CATAN_LOGS="$root/.logs/check" "$root/scripts/dev.sh" > /dev/null 2>&1 &
     stack=$!
     trap 'kill $stack 2>/dev/null; wait $stack 2>/dev/null || true' EXIT
@@ -49,6 +52,8 @@ if [ "${1:-}" = "--e2e" ]; then
         sleep 1
     done
     (cd "$root/e2e" && BASE_URL="http://localhost:$FRONTEND_PORT" PLAYERS=1 BOTS=3 BOT_LEVEL=hard npm test)
+    shared=$(find "$HUMAN_RECORDS_DIR" -name '*.json.gz' 2>/dev/null | wc -l)
+    [ "$shared" -eq 1 ] || { echo "expected 1 shared game in $HUMAN_RECORDS_DIR, found $shared" >&2; exit 1; }
 fi
 
 printf '\nAll checks passed.\n'

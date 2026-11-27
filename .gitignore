@@ -11,6 +11,7 @@ venv/
 .pytest_cache/
 # Finished games saved by a local backend
 backend/records/
+backend/records-human/
 backend/code_tool.py
 frontend/code_dump.py
 

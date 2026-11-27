@@ -16,6 +16,7 @@ interface LobbyScreenProps {
 export const LobbyScreen = ({ state, seat, room }: LobbyScreenProps) => {
     const [copied, setCopied] = useState(false);
     const isHost = state.host_seat === seat;
+    const me = state.players[seat];
     const link = window.location.href;
 
     const copyLink = async () => {
@@ -45,6 +46,7 @@ export const LobbyScreen = ({ state, seat, room }: LobbyScreenProps) => {
                             {player.name}
                             {player.seat === state.host_seat && <span className="muted"> · host</span>}
                             {player.seat === seat && <span className="muted"> · you</span>}
+                            {player.shares_game && <span className="muted" title="Agreed to share this game for research"> · shares</span>}
                             {player.is_bot && !isHost && <span className="muted"> · {botLabel(player.bot_level)}</span>}
                             {player.is_bot && isHost && (
                                 <>
@@ -80,6 +82,23 @@ export const LobbyScreen = ({ state, seat, room }: LobbyScreenProps) => {
                 )}
 
                 <SettingsPanel settings={state.settings} editable={isHost} send={room.send} />
+
+                {me && !me.is_bot && (
+                    <label className="check share">
+                        <input
+                            type="checkbox"
+                            checked={me.shares_game ?? false}
+                            onChange={(event) => room.send('share_for_research', { share: event.target.checked })}
+                        />
+                        <span>
+                            Share this game for research
+                            <span className="muted hint">
+                                {' · '}anonymous, only if everyone agrees.{' '}
+                                <a href="/terms" target="_blank" rel="noreferrer">What this means</a>
+                            </span>
+                        </span>
+                    </label>
+                )}
 
                 {isHost ? (
                     <button

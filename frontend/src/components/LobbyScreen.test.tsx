@@ -30,7 +30,8 @@ const ROOM = { online: [], error: null, send: () => {} } as unknown as RoomConne
 const PLAYERS = [player(0, 'Ann'), player(1, 'Bob'), player(2, 'Ada', 'easy'), player(3, 'Boole', 'hard')];
 
 // No DOM in the test setup: the lobby is rendered to markup and checked as text.
-const render = (seat: number) => renderToStaticMarkup(<LobbyScreen state={state(PLAYERS)} seat={seat} room={ROOM} />);
+const render = (seat: number, players = PLAYERS) =>
+    renderToStaticMarkup(<LobbyScreen state={state(players)} seat={seat} room={ROOM} />);
 
 const select = (markup: string, name: string) =>
     markup.match(new RegExp(`<select[^>]*aria-label="Level of ${name}"[^>]*>.*?</select>`))?.[0] ?? '';
@@ -68,5 +69,28 @@ describe('LobbyScreen', () => {
         expect(markup.match(/class="dot bot"/g)).toHaveLength(2);
         // Ann and Bob are people who have not connected in this test
         expect(markup.match(/class="dot"/g)).toHaveLength(2);
+    });
+
+    it('asks each person to share the game, unticked until they agree', () => {
+        const markup = render(1);
+
+        expect(markup).toContain('Share this game for research');
+        expect(markup).toMatch(/<input type="checkbox"\/>/);
+        expect(markup).toContain('href="/terms"');
+    });
+
+    it('shows everyone who agreed', () => {
+        const players = [{ ...player(0, 'Ann'), shares_game: true }, player(1, 'Bob')];
+        const markup = render(1, players);
+
+        expect(markup).toMatch(/Ann.*· shares/);
+        expect(markup).not.toMatch(/Bob<!-- -->.*· shares/);
+        expect(markup).toMatch(/<input type="checkbox"\/>/);
+    });
+
+    it('ticks the box of a person who agreed', () => {
+        const players = [{ ...player(0, 'Ann'), shares_game: true }, player(1, 'Bob')];
+
+        expect(render(0, players)).toMatch(/<input type="checkbox" checked=""\/>/);
     });
 });

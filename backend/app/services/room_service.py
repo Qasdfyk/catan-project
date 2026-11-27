@@ -16,6 +16,7 @@ from app.models.settings import GameSettings
 from app.schemas.game_schemas import BOT_LEVELS, DEFAULT_BOT_LEVEL, RoomSession, SettingsUpdate
 from app.services.actions import apply_action
 from app.services.game_record import close_record, new_record
+from app.services.human_records import anonymize, eligible, is_person, new_dataset_id
 from app.services.record_store import RecordStore
 from app.services.redis_service import RedisService
 from app.services.serializer import GameSerializer
@@ -59,9 +60,13 @@ class InvalidSession(RoomError):
 
 
 class RoomService:
-    def __init__(self, redis: RedisService, records: Optional[RecordStore] = None):
+    def __init__(
+        self, redis: RedisService, records: Optional[RecordStore] = None, human_records: Optional[RecordStore] = None
+    ):
         self.redis = redis
         self.records = records or RecordStore(config.RECORDS_DIR)
+        # Anonymous copies of the games everyone agreed to share (app/services/human_records.py)
+        self.human_records = human_records or RecordStore(config.HUMAN_RECORDS_DIR)
         # Replaced in tests to move time forward
         self.clock = time.time
         # Picks who plays first among n seats; replaced in tests to fix the order
@@ -158,6 +163,8 @@ class RoomService:
                 self._set_bot_level(room, seat, payload)
             elif action_type == "update_settings":
                 self._update_settings(room, seat, payload)
+            elif action_type == "share_for_research":
+                self._share_for_research(room, seat, payload)
             elif action_type == "replace_with_bot":
                 await self._replace_with_bot(room, game, seat, payload.get("seat"))
                 return
@@ -333,6 +340,22 @@ class RoomService:
         # Rooms created before settings existed have none stored
         room["settings"] = {**GameSettings.from_dict(room.get("settings")).to_dict(), **changes}
 
+    @staticmethod
+    def _share_for_research(room: Dict[str, Any], seat: int, payload: Dict[str, Any]):
+        """
+        Each person answers for themselves, in the lobby. The answer is fixed
+        when the game starts, so the whole game is covered by one choice.
+        """
+        if room["status"] != "lobby":
+            raise RoomError("The game has already started.")
+        share = payload.get("share")
+        if not isinstance(share, bool):
+            raise RoomError("Say yes or no.")
+        entry = room["seats"][seat]
+        if not is_person(entry):
+            raise RoomError("Bots have nothing to share.")
+        entry["share_for_research"] = share
+
     async def _replace_with_bot(self, room: Dict[str, Any], game: Optional[GameState], seat: int, target: Any):
         """Keeps a game going when a player left. They can return by name at any time."""
         if room["status"] != "playing":
@@ -363,6 +386,7 @@ class RoomService:
 
         seats = []
         for entry in room["seats"]:
+            # Sharing is asked again for every game, so the answer does not carry over
             new_entry = {"name": entry["name"], "token": secrets.token_urlsafe(24)}
             if entry.get("replaced"):
                 # A bot keeps the seat until the player who left returns by name
@@ -450,7 +474,22 @@ class RoomService:
             return record
         await self.redis.drop_record(room_id)
         room["record_saved"] = True
+        await self._save_human_record(room, record)
         return record
+
+    async def _save_human_record(self, room: Dict[str, Any], record: Dict[str, Any]):
+        """
+        Runs once per game, right after the platform record is safe: record_saved
+        stops a second call. A failure loses this game from the dataset and
+        nothing else, which is a fair price for a measurement set.
+        """
+        if not eligible(room):
+            return
+        dataset_id = new_dataset_id()
+        try:
+            await asyncio.to_thread(self.human_records.save, dataset_id, anonymize(record, dataset_id))
+        except OSError:
+            log.exception("Could not save the shared copy of room %s.", room["room_id"])
 
     async def _update_turn_deadline(self, room: Dict[str, Any], game: Optional[GameState]):
         """Every step of a turn (rolling, discarding, moving the robber...) gets the full time."""
