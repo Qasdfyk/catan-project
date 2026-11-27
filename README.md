@@ -132,6 +132,9 @@ Every game can be described by a [game record](docs/game-record.md): one JSON do
 board, each action and the outcome of each chance, from which the rules engine replays the game
 exactly. It is the input of the [analysis engine](https://github.com/Qasdfyk/catan-analysis-engine).
 The platform records every game and offers the file for download when it ends.
+When every person at the table ticks *Share this game for research* in the lobby, an anonymous
+copy also goes into a separate [human games dataset](docs/human-records.md), used only to
+measure the analysis engine on human play. The terms are at `/terms`.
 
 ## Tests
 

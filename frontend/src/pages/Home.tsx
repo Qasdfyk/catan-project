@@ -41,6 +41,7 @@ export const Home = () => {
                     {busy ? 'Creating…' : 'Create room'}
                 </button>
                 {error && <p className="form-error" role="alert">{error}</p>}
+                <p className="muted"><a href="/terms">Terms and your games</a></p>
             </form>
         </main>
     );

@@ -64,6 +64,8 @@ export interface LobbyPlayer {
   is_bot: boolean;
   /** How well the bot plays; null for people. */
   bot_level: BotLevel | null;
+  /** In the lobby: whether this person agreed to share the game for research (see /terms). */
+  shares_game?: boolean;
 }
 
 export interface Player extends LobbyPlayer {

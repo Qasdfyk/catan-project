@@ -10,25 +10,7 @@ import pytest
 from app.main import app
 from app.services.game_record import fingerprint, replay
 from app.services.random_player import play_step
-from rooms_api import HEADERS, act, create_room, join, load_game, started_room
-
-
-async def play_to_the_end(client, room_id, tokens, seed=3):
-    """
-    Plays random legal moves through the API, as players would. Each move is
-    found on a copy of the stored game; the server then decides it again,
-    rolling its own dice.
-    """
-    rng = random.Random(seed)
-    for _ in range(10_000):
-        game = await load_game(room_id)
-        if game.is_game_over:
-            return game
-        play_step(game, rng)
-        for event in game.take_events():
-            response = await act(client, room_id, tokens[event["seat"]], event["action"], event["payload"])
-            assert response.status_code == 200, (event, response.text)
-    raise AssertionError("the game did not end")
+from rooms_api import HEADERS, act, create_room, join, load_game, play_to_the_end, started_room
 
 
 async def download(client, room_id):

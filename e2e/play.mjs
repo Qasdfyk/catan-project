@@ -280,6 +280,16 @@ const checkLobby = async (context) => {
     await stranger.close();
     problems.length = 0; // the refused request above is logged by the browser as a 409
 
+    // Everyone agrees to share the game, so the lobby shows it on every seat of a person
+    for (const tab of tabs) {
+        // The box follows the server, so it ticks only once the answer is stored
+        await tab.getByRole('checkbox', { name: /Share this game for research/ }).click();
+    }
+    await host.waitForFunction((people) => {
+        const seats = [...document.querySelectorAll('.lobby-players li')].filter((seat) => !seat.querySelector('.dot.bot'));
+        return seats.length === people && seats.every((seat) => seat.textContent.includes('· shares'));
+    }, tabs.length);
+
     await shot(host, '02-lobby');
     await host.getByRole('button', { name: 'Start game' }).click();
     for (const tab of tabs) await tab.getByTestId('instruction').waitFor();

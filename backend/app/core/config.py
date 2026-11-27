@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     EVENTS_STREAM_MAXLEN: int = 10000
     # Finished games, one gzipped JSON record each (docs/game-record.md)
     RECORDS_DIR: str = "records"
+    # Anonymous copies of the games every person agreed to share (docs/human-records.md)
+    HUMAN_RECORDS_DIR: str = "records-human"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

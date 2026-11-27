@@ -1,10 +1,12 @@
 """Requests the gateway and the browser make, shared by the integration tests."""
 import json
+import random
 
 from app.core.config import settings
 from app.main import app
 from app.models.game import Building, BuildingType, TurnPhase
 from app.models.hex_lib import Hex, Vertex
+from app.services.random_player import play_step
 from app.services.redis_service import BOTS_STREAM, EVENTS_STREAM
 from app.services.serializer import GameSerializer
 
@@ -111,3 +113,21 @@ def past_setup(game):
         game.settlements[vertex] = Building(player.color, BuildingType.SETTLEMENT)
         game.roads[vertex.get_touching_edges()[0].get_canonical()] = player.color
         player.victory_points = 1
+
+
+async def play_to_the_end(client, room_id, tokens, seed=3):
+    """
+    Plays random legal moves through the API, as players would. Each move is
+    found on a copy of the stored game; the server then decides it again,
+    rolling its own dice.
+    """
+    rng = random.Random(seed)
+    for _ in range(10_000):
+        game = await load_game(room_id)
+        if game.is_game_over:
+            return game
+        play_step(game, rng)
+        for event in game.take_events():
+            response = await act(client, room_id, tokens[event["seat"]], event["action"], event["payload"])
+            assert response.status_code == 200, (event, response.text)
+    raise AssertionError("the game did not end")

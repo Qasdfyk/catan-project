@@ -64,7 +64,14 @@ def public_view(room: Dict[str, Any], game: Optional[GameState]) -> Dict[str, An
 
     if game is None:
         view["players"] = [
-            {"seat": seat, "name": entry["name"], "is_bot": entry.get("bot", False), "bot_level": _bot_level(entry)}
+            {
+                "seat": seat,
+                "name": entry["name"],
+                "is_bot": entry.get("bot", False),
+                "bot_level": _bot_level(entry),
+                # Everyone sees who agreed, since the game is shared only if all people do
+                "shares_game": entry.get("share_for_research", False),
+            }
             for seat, entry in enumerate(room["seats"])
         ]
         view["game"] = None
