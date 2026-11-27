@@ -43,9 +43,8 @@ export const Terms = () => (
 
             <h2>Changing your mind</h2>
             <p>
-                Before the game starts, untick the box. After that the copy holds no name, so nobody can tell
-                which one was yours, and it cannot be picked out and removed. If you are unsure, leave the box
-                empty: the game plays the same.
+                Before the game starts, untick the box. Once it starts the choice is fixed for that game, and a
+                rematch asks again. If you are unsure, leave the box empty: the game plays the same.
             </p>
 
             <p className="muted">
